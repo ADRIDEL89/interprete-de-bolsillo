@@ -399,23 +399,30 @@
     if (principal) principal.scrollTop = 0;
   }
 
-  function promptTraduccion(texto) {
+  function promptTraduccion(texto, previo) {
     return (temaReunion() ? "Tema de la conversación: " + temaReunion() + ". " : "") +
-      "Traduce al español natural este fragmento en inglés transcrito por voz " +
+      (previo ? "Fragmento anterior, solo como contexto y sin traducirlo: " + previo + "\n" : "") +
+      "Traduce al español natural únicamente este fragmento nuevo en inglés, transcrito por voz, aunque esté incompleto " +
       "(corrige errores evidentes de transcripción y usa el término técnico estándar en español cuando corresponda). " +
-      "Responde solo con la traducción, sin comentarios:\n«" + texto + "»";
+      "No completes ideas ni agregues comillas. Responde solo con la traducción:\n" + texto;
   }
 
-  function traducirEn(el, texto, alFinal, alParcial) {
-    return llamarClaudeStream(promptTraduccion(texto), function (t) {
+  function limpiarTraduccion(t) {
+    return String(t || "").trim().replace(/^[«"“]+/, "").replace(/[»"”]+$/, "").trim();
+  }
+
+  function traducirEn(el, texto, alFinal, alParcial, previo) {
+    return llamarClaudeStream(promptTraduccion(texto, previo), function (t) {
+      t = limpiarTraduccion(t);
       el.textContent = t;
       el.classList.remove("espera");
       if (alParcial) alParcial(t);
     }).then(function (t) {
-      el.textContent = t.trim();
+      t = limpiarTraduccion(t);
+      el.textContent = t;
       el.classList.remove("espera");
-      if (alParcial) alParcial(t.trim());
-      if (alFinal) alFinal(t.trim());
+      if (alParcial) alParcial(t);
+      if (alFinal) alFinal(t);
     }).catch(function (e) {
       el.classList.remove("espera");
       el.textContent = "(" + copiaError(e) + ")";
@@ -424,6 +431,7 @@
   }
 
   var subsTextos = [];
+  var ultimoIngles = "";
   function pintarSubs() {
     var ult = -1, pen = -1;
     for (var i = subsTextos.length - 1; i >= 0; i--) {
@@ -501,9 +509,12 @@
     transcripcion.push(texto);
     var posSub = subsTextos.length;
     subsTextos.push("");
+    var previo = ultimoIngles;
+    ultimoIngles = texto;
     traducirEn(es, texto,
       function (t) { transcripcion[posicion] = texto + "\n" + t; },
-      function (t) { subsTextos[posSub] = t; pintarSubs(); });
+      function (t) { subsTextos[posSub] = t; pintarSubs(); },
+      previo);
   }
 
   $("btnCopiar").addEventListener("click", function () {
@@ -549,10 +560,14 @@
 
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
 
-  function vaciarBuffer() {
+  function vaciarBuffer(forzar) {
     if (temporizador) { clearTimeout(temporizador); temporizador = null; }
     if (!buffer.length) return;
     var texto = buffer.join(" ").replace(/\s+/g, " ").trim();
+    if (forzar !== true && modo === "expo" && palabrasDe(texto).length < 5) {
+      temporizador = setTimeout(function () { vaciarBuffer(true); }, 2500);
+      return;
+    }
     buffer = [];
     live.textContent = escuchando ? (pistaReunion ? "Escuchando la reunión…" : "Te escucho…") : "";
     if (!texto) return;
@@ -744,7 +759,7 @@
     escuchando = false;
     if (rec) { try { rec.stop(); } catch (e) {} }
     cerrarFlujo();
-    vaciarBuffer();
+    vaciarBuffer(true);
     pintarMic();
     refrescarEstado();
   }
@@ -755,7 +770,7 @@
       if (pistaReunion) { detenerReunion(); return; }
       escuchando = false;
       if (rec) { try { rec.stop(); } catch (e) {} }
-      vaciarBuffer();
+      vaciarBuffer(true);
       pintarMic();
       refrescarEstado();
     } else {
@@ -772,7 +787,7 @@
     $("tabConv").className = m === "conv" ? "activa" : "";
     $("tabExpo").className = m === "expo" ? "activa" : "";
     document.body.classList.toggle("modo-expo", m === "expo");
-    vaciarBuffer();
+    vaciarBuffer(true);
   }
   $("tabConv").addEventListener("click", function () { setModo("conv"); });
   $("tabExpo").addEventListener("click", function () { setModo("expo"); });
