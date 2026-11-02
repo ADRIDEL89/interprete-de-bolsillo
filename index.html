@@ -132,6 +132,9 @@
   #btnPantalla { margin: 0 auto; background: var(--accent-soft); border: 1px solid var(--line);
                  color: var(--accent); border-radius: 999px; padding: 7px 16px; font-size: .85rem; font-weight: 700; }
   #btnPantalla.activo { background: var(--alerta-soft); color: var(--alerta); }
+  #btnAyuda { margin: 0 auto; background: var(--sug); border: none; color: #FFFFFF;
+              border-radius: 999px; padding: 10px 22px; font-size: .95rem; font-weight: 800; }
+  .modo-expo #btnAyuda { display: none; }
   .tarjeta select, .tarjeta textarea {
     width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--bg); color: var(--ink); font-size: 15px; font-family: inherit;
@@ -197,6 +200,7 @@
 <footer>
   <button id="btnMic" type="button" aria-label="Micrófono">&#127908;</button>
   <p id="micTexto">Toca para escuchar en inglés</p>
+  <button id="btnAyuda" type="button">Ayúdame a responder</button>
   <button id="btnPantalla" type="button">Escuchar la reunión del computador</button>
   <button id="btnCopiar" type="button">Copiar transcripción</button>
   <form class="fila" id="formTexto">
@@ -515,6 +519,40 @@
       }, Math.max(500, 12000 - (Date.now() - respuestaDesde)));
     }
   }
+
+  function ayudaManual() {
+    if (!clave()) { abrirAjustes(); return; }
+    if (!historia.length) {
+      avisar("Todavía no escuché nada. Activa el micrófono o escribe la pregunta en la caja de abajo.");
+      return;
+    }
+    var sobre = "";
+    for (var i = historia.length - 1; i >= 0; i--) {
+      if (historia[i].quien === "Traducción" || historia[i].quien === "Interlocutor") { sobre = historia[i].texto; break; }
+    }
+    respuestaFija = false;
+    respuestaPendiente = null;
+    $("respuesta").classList.remove("fija");
+    $("rFija").textContent = "toca para fijar";
+    pintarRespuesta({ sobre: sobre, concepto: "", sg: { en: "Pensando la mejor respuesta…", pr: "", es: "" } });
+    var prompt = marco() +
+      "Contexto de la conversación, transcrito por voz (puede traer errores; interpreta lo más probable):\n" + contexto() + "\n\n" +
+      "La usuaria pidió ayuda para responder ahora. Identifica la última pregunta o tema del interlocutor y sugiere la mejor respuesta " +
+      "que ella puede decir tal cual, apoyada en su perfil real; no inventes cifras, fechas, cargos ni proyectos que el perfil no diga. " +
+      "Nunca devuelvas la lista vacía.\n\n" +
+      "Responde SOLO con un objeto JSON exactamente así: " +
+      '{"concepto":"en español, una o dos frases que expliquen el concepto o término clave del que preguntan; vacío si es algo cotidiano",' +
+      '"sug":[{"en":"respuesta sugerida en inglés, con el registro indicado",' +
+      '"pr":"pronunciación aproximada en español de TODA la respuesta, palabra por palabra, sílabas con guiones, la tónica con tilde y ↗ o ↘ al final de cada oración",' +
+      '"es":"qué significa"}]} con UNA sola sugerencia. Nada de texto fuera del JSON.';
+    llamarClaude(prompt).then(function (t) {
+      var r = extraerJSON(t) || {};
+      var sg = Array.isArray(r.sug) && r.sug[0] ? r.sug[0] : null;
+      if (!sg || !String(sg.en || "").trim()) { $("rEn").textContent = "No pude armar una respuesta. Toca el botón otra vez."; return; }
+      pintarRespuesta({ sobre: sobre, concepto: String(r.concepto || "").trim(), sg: sg });
+    }).catch(function (e) { $("rEn").textContent = "(" + copiaError(e) + ")"; });
+  }
+  $("btnAyuda").addEventListener("click", ayudaManual);
 
   $("respuesta").addEventListener("click", function () {
     respuestaFija = !respuestaFija;
