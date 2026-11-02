@@ -432,17 +432,31 @@
 
   var subsTextos = [];
   var ultimoIngles = "";
-  function pintarSubs() {
-    var ult = -1, pen = -1;
-    for (var i = subsTextos.length - 1; i >= 0; i--) {
-      if (subsTextos[i]) {
-        if (ult < 0) ult = i;
-        else { pen = i; break; }
-      }
-    }
-    $("subActual").textContent = ult >= 0 ? subsTextos[ult] : "Los subtítulos en español aparecen aquí.";
-    $("subPrev").textContent = pen >= 0 ? subsTextos[pen] : "";
+  var subIdx = -1, subDesde = 0;
+
+  function mostrarSub() {
+    $("subActual").textContent = subIdx >= 0 && subsTextos[subIdx] ? subsTextos[subIdx] : "Los subtítulos en español aparecen aquí.";
+    $("subPrev").textContent = subIdx > 0 ? subsTextos[subIdx - 1] : "";
   }
+
+  function pintarSubs() {
+    if (subIdx < 0 && subsTextos[0]) { subIdx = 0; subDesde = Date.now(); }
+    mostrarSub();
+  }
+
+  setInterval(function () {
+    var sig = subIdx + 1;
+    if (sig >= subsTextos.length || !subsTextos[sig]) return;
+    if (subIdx < 0) { subIdx = 0; subDesde = Date.now(); mostrarSub(); return; }
+    var pendientes = subsTextos.length - 1 - subIdx;
+    var minimo = Math.max(1200, Math.min(4000, (subsTextos[subIdx] || "").length * 35));
+    if (pendientes >= 3) minimo = 800;
+    if (Date.now() - subDesde >= minimo) {
+      subIdx = sig;
+      subDesde = Date.now();
+      mostrarSub();
+    }
+  }, 250);
 
   function turnoConversacion(texto) {
     var card = document.createElement("div");
@@ -565,7 +579,10 @@
     if (!buffer.length) return;
     var texto = buffer.join(" ").replace(/\s+/g, " ").trim();
     if (forzar !== true && modo === "expo" && palabrasDe(texto).length < 5) {
-      temporizador = setTimeout(function () { vaciarBuffer(true); }, 3000);
+      temporizador = setTimeout(function () {
+        temporizador = null;
+        if (palabrasDe(buffer.join(" ")).length >= 3) vaciarBuffer(true);
+      }, 6000);
       return;
     }
     buffer = [];
@@ -610,8 +627,8 @@
     if (temporizadorInterina) clearTimeout(temporizadorInterina);
     var palabras = palabrasDe(ultimaInterina);
     var limite = modo === "expo" ? 16 : 40;
-    if (palabras.length - palabrasEnviadas >= limite) {
-      var hasta = palabras.length - 2;
+    while (palabras.length - 2 - palabrasEnviadas >= limite) {
+      var hasta = palabrasEnviadas + limite;
       buffer.push(palabras.slice(palabrasEnviadas, hasta).join(" "));
       palabrasEnviadas = hasta;
       vaciarBuffer();
