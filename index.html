@@ -565,7 +565,7 @@
     if (!buffer.length) return;
     var texto = buffer.join(" ").replace(/\s+/g, " ").trim();
     if (forzar !== true && modo === "expo" && palabrasDe(texto).length < 5) {
-      temporizador = setTimeout(function () { vaciarBuffer(true); }, 2500);
+      temporizador = setTimeout(function () { vaciarBuffer(true); }, 3000);
       return;
     }
     buffer = [];
@@ -576,7 +576,7 @@
 
   var esAndroid = /Android/i.test(navigator.userAgent);
   var ultimaInterina = "";
-  var palabrasEnviadas = 0, temporizadorInterina = null;
+  var palabrasEnviadas = 0, temporizadorInterina = null, temporizadorSilencio = null;
 
   function palabrasDe(t) {
     t = (t || "").trim();
@@ -593,15 +593,24 @@
       palabrasEnviadas = hasta;
       vaciarBuffer();
     }
+    if (temporizadorSilencio) clearTimeout(temporizadorSilencio);
     temporizadorInterina = setTimeout(function () {
       temporizadorInterina = null;
-      var p = palabrasDe(ultimaInterina);
-      if (p.length > palabrasEnviadas) {
-        buffer.push(p.slice(palabrasEnviadas).join(" "));
-        palabrasEnviadas = p.length;
-        vaciarBuffer();
-      }
+      soltarPendientes(modo === "expo" ? 6 : 1);
     }, modo === "expo" ? 1200 : 1800);
+    temporizadorSilencio = setTimeout(function () {
+      temporizadorSilencio = null;
+      soltarPendientes(1);
+    }, 3000);
+  }
+
+  function soltarPendientes(minimo) {
+    var p = palabrasDe(ultimaInterina);
+    if (p.length - palabrasEnviadas >= minimo) {
+      buffer.push(p.slice(palabrasEnviadas).join(" "));
+      palabrasEnviadas = p.length;
+      vaciarBuffer();
+    }
   }
   var idioma = "en-GB";
   var silencios = 0;
@@ -701,6 +710,7 @@
     };
     rec.onend = function () {
       if (temporizadorInterina) { clearTimeout(temporizadorInterina); temporizadorInterina = null; }
+      if (temporizadorSilencio) { clearTimeout(temporizadorSilencio); temporizadorSilencio = null; }
       var pendientes = palabrasDe(ultimaInterina).slice(palabrasEnviadas);
       ultimaInterina = "";
       palabrasEnviadas = 0;
