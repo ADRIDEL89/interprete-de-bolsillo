@@ -427,7 +427,7 @@
     return String(t || "").trim().replace(/^[«"“]+/, "").replace(/[»"”]+$/, "").trim();
   }
 
-  function traducirEn(el, texto, alFinal, alParcial, previo) {
+  function traducirEn(el, texto, alFinal, alParcial, previo, reintento) {
     return llamarClaudeStream(promptTraduccion(texto, previo), function (t) {
       t = limpiarTraduccion(t);
       el.textContent = t;
@@ -440,6 +440,12 @@
       if (alParcial) alParcial(t);
       if (alFinal) alFinal(t);
     }).catch(function (e) {
+      var transitorio = !e || !e.propio || (e.propio === "http" && (e.status === 529 || e.status >= 500));
+      if (!reintento && transitorio) {
+        return new Promise(function (ok) { setTimeout(ok, 800); }).then(function () {
+          return traducirEn(el, texto, alFinal, alParcial, previo, true);
+        });
+      }
       el.classList.remove("espera");
       el.textContent = "(" + copiaError(e) + ")";
       if (alParcial) alParcial("(" + copiaError(e) + ")");
@@ -610,6 +616,7 @@
   var esAndroid = /Android/i.test(navigator.userAgent);
   var ultimaInterina = "";
   var palabrasEnviadas = 0, temporizadorInterina = null, temporizadorSilencio = null;
+  var fallosRed = 0;
 
   function palabrasDe(t) {
     t = (t || "").trim();
@@ -718,6 +725,7 @@
     rec.onspeechstart = function () { setEstado("oyendo voz", "on"); };
     rec.onresult = function (ev) {
       silencios = 0;
+      if (fallosRed) { fallosRed = 0; setEstado("oyendo voz", "on"); }
       if (aviso.className) avisar("");
       if (esAndroid && !pistaReunion) {
         var sesion = "";
@@ -762,7 +770,12 @@
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
         detenerConError("micrófono bloqueado", "Chrome no le dio permiso al micrófono. Toca el candado junto a la dirección, entra a Permisos, pon Micrófono en Permitir y recarga la página.");
       } else if (ev.error === "network") {
-        detenerConError("sin conexión", "El reconocimiento de voz necesita internet y perdió la conexión. Revisa la red y toca el micrófono otra vez.");
+        fallosRed++;
+        if (fallosRed <= 6) {
+          setEstado("reconectando…", "err");
+          return;
+        }
+        detenerConError("sin conexión", "El reconocimiento de voz perdió la conexión seis veces seguidas. Revisa el internet y toca el micrófono otra vez.");
       } else if (ev.error === "audio-capture") {
         detenerConError("sin micrófono", "No se detecta el micrófono. Cierra las apps que lo estén usando (llamadas, grabadora, transcripción) y toca otra vez.");
       } else {
@@ -784,8 +797,9 @@
           if (!escuchando) return;
           if (rec.lang !== idioma) { arrancarMic(); return; }
           if (pistaReunion && pistaReunion.readyState !== "live") { detenerReunion(); return; }
-          try { if (pistaReunion) rec.start(pistaReunion); else rec.start(); } catch (e) {}
-        }, 250);
+          try { if (pistaReunion) rec.start(pistaReunion); else rec.start(); }
+          catch (e) { setTimeout(function () { if (escuchando) arrancarMic(); }, 1000); }
+        }, fallosRed ? Math.min(4000, 700 * fallosRed) : 250);
       } else { live.textContent = ""; }
     };
     try { if (pistaReunion) rec.start(pistaReunion); else rec.start(); }
@@ -847,6 +861,7 @@
     } else {
       escuchando = true;
       silencios = 0;
+      fallosRed = 0;
       avisar("");
       pintarMic();
       arrancarMic();
