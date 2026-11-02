@@ -561,6 +561,33 @@
 
   var esAndroid = /Android/i.test(navigator.userAgent);
   var ultimaInterina = "";
+  var palabrasEnviadas = 0, temporizadorInterina = null;
+
+  function palabrasDe(t) {
+    t = (t || "").trim();
+    return t ? t.split(/\s+/) : [];
+  }
+
+  function revisarInterina() {
+    if (temporizadorInterina) clearTimeout(temporizadorInterina);
+    var palabras = palabrasDe(ultimaInterina);
+    var limite = modo === "expo" ? 16 : 40;
+    if (palabras.length - palabrasEnviadas >= limite) {
+      var hasta = palabras.length - 2;
+      buffer.push(palabras.slice(palabrasEnviadas, hasta).join(" "));
+      palabrasEnviadas = hasta;
+      vaciarBuffer();
+    }
+    temporizadorInterina = setTimeout(function () {
+      temporizadorInterina = null;
+      var p = palabrasDe(ultimaInterina);
+      if (p.length > palabrasEnviadas) {
+        buffer.push(p.slice(palabrasEnviadas).join(" "));
+        palabrasEnviadas = p.length;
+        vaciarBuffer();
+      }
+    }, modo === "expo" ? 1200 : 1800);
+  }
   var idioma = "en-GB";
   var silencios = 0;
   var pistaReunion = null, flujoReunion = null;
@@ -616,15 +643,19 @@
     rec.onresult = function (ev) {
       silencios = 0;
       if (aviso.className) avisar("");
-      var interina = "";
+      var interina = "", finales = [];
       for (var i = ev.resultIndex; i < ev.results.length; i++) {
         var r = ev.results[i];
-        if (r.isFinal) {
-          buffer.push(r[0].transcript);
-          programarEnvio();
-        } else { interina += r[0].transcript; }
+        if (r.isFinal) finales.push(r[0].transcript);
+        else interina += r[0].transcript;
+      }
+      if (finales.length) {
+        var resto = palabrasDe(finales.join(" ")).slice(palabrasEnviadas).join(" ");
+        palabrasEnviadas = 0;
+        if (resto) { buffer.push(resto); programarEnvio(); }
       }
       ultimaInterina = interina;
+      revisarInterina();
       live.textContent = interina || (buffer.length ? buffer.join(" ") : "");
     };
     rec.onerror = function (ev) {
@@ -654,9 +685,12 @@
       }
     };
     rec.onend = function () {
-      if (ultimaInterina.trim()) {
-        buffer.push(ultimaInterina);
-        ultimaInterina = "";
+      if (temporizadorInterina) { clearTimeout(temporizadorInterina); temporizadorInterina = null; }
+      var pendientes = palabrasDe(ultimaInterina).slice(palabrasEnviadas);
+      ultimaInterina = "";
+      palabrasEnviadas = 0;
+      if (pendientes.length) {
+        buffer.push(pendientes.join(" "));
         programarEnvio();
       }
       if (escuchando) {
