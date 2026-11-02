@@ -571,6 +571,10 @@
     buffer = [];
     live.textContent = escuchando ? (pistaReunion ? "Escuchando la reunión…" : "Te escucho…") : "";
     if (!texto) return;
+    var tn = palabrasDe(texto).map(normal).join(" ");
+    var un = palabrasDe(ultimoEnviado).map(normal).join(" ");
+    if (esAndroid && un && (" " + un + " ").indexOf(" " + tn + " ") >= 0) return;
+    ultimoEnviado = texto;
     if (modo === "conv") turnoConversacion(texto); else lineaExposicion(texto);
   }
 
@@ -582,6 +586,25 @@
     t = (t || "").trim();
     return t ? t.split(/\s+/) : [];
   }
+
+  function normal(w) { return w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, ""); }
+
+  function fusionar(acum, nuevo) {
+    var a = palabrasDe(acum), b = palabrasDe(nuevo);
+    if (!a.length) return b.join(" ");
+    if (!b.length) return a.join(" ");
+    var al = a.map(normal).join(" "), bl = b.map(normal);
+    var an = a.map(normal);
+    if (bl.length >= an.length && bl.slice(0, an.length).join(" ") === al) return b.join(" ");
+    if (an.length >= bl.length && an.slice(an.length - bl.length).join(" ") === bl.join(" ")) return a.join(" ");
+    if ((" " + al + " ").indexOf(" " + bl.join(" ") + " ") >= 0) return a.join(" ");
+    for (var k = Math.min(an.length, bl.length); k > 0; k--) {
+      if (an.slice(an.length - k).join(" ") === bl.slice(0, k).join(" ")) return a.concat(b.slice(k)).join(" ");
+    }
+    return a.concat(b).join(" ");
+  }
+
+  var ultimoEnviado = "";
 
   function revisarInterina() {
     if (temporizadorInterina) clearTimeout(temporizadorInterina);
@@ -668,11 +691,10 @@
       silencios = 0;
       if (aviso.className) avisar("");
       if (esAndroid && !pistaReunion) {
-        var n = ev.results.length, partes = [];
-        for (var k = 0; k < n; k++) partes.push(ev.results[k][0].transcript.trim());
-        var acumulado = n >= 2 && partes[n - 2] &&
-          partes[n - 1].toLowerCase().indexOf(partes[n - 2].toLowerCase()) === 0;
-        ultimaInterina = acumulado ? partes[n - 1] : partes.join(" ");
+        var sesion = "";
+        for (var k = 0; k < ev.results.length; k++) sesion = fusionar(sesion, ev.results[k][0].transcript);
+        ultimaInterina = sesion;
+        if (palabrasEnviadas > palabrasDe(sesion).length) palabrasEnviadas = palabrasDe(sesion).length;
         revisarInterina();
         live.textContent = palabrasDe(ultimaInterina).slice(-25).join(" ");
         return;
