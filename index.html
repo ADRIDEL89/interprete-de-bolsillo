@@ -405,63 +405,99 @@
     if (!buffer.length) return;
     var texto = buffer.join(" ").replace(/\s+/g, " ").trim();
     buffer = [];
+    live.textContent = escuchando ? "Te escucho…" : "";
     if (!texto) return;
     if (modo === "conv") turnoConversacion(texto); else lineaExposicion(texto);
   }
 
+  var esAndroid = /Android/i.test(navigator.userAgent);
+  var ultimaInterina = "";
+
+  function programarEnvio() {
+    if (temporizador) clearTimeout(temporizador);
+    temporizador = setTimeout(vaciarBuffer, modo === "expo" ? 900 : 2200);
+  }
+
+  function pintarMic() {
+    btnMic.classList.toggle("escuchando", escuchando);
+    micTexto.textContent = escuchando ? "Escuchando en inglés, toca para pausar" : "Toca para escuchar en inglés";
+  }
+
+  function detenerConError(estadoTxt, msj) {
+    escuchando = false;
+    if (rec) { try { rec.abort(); } catch (e) {} }
+    pintarMic();
+    live.textContent = "";
+    setEstado(estadoTxt, "err");
+    avisar(msj);
+  }
+
   function arrancarMic() {
     if (!SR) {
-      avisar("Este navegador no tiene reconocimiento de voz (usa Chrome en Android). Mientras tanto escribe o pega el texto abajo.");
-      setEstado("sin micrófono", "err");
-      escuchando = false; actualizarMicUI();
+      detenerConError("sin micrófono", "Este navegador no tiene reconocimiento de voz. Abre el enlace en la app Chrome, no dentro de WhatsApp ni en el navegador de Samsung. Mientras tanto puedes escribir el texto abajo.");
       return;
     }
     rec = new SR();
     rec.lang = "en-GB";
-    rec.continuous = true;
+    rec.continuous = !esAndroid;
     rec.interimResults = true;
+    rec.onstart = function () {
+      setEstado("escuchando", "on");
+      if (!live.textContent) live.textContent = "Te escucho…";
+    };
+    rec.onspeechstart = function () { setEstado("oyendo voz", "on"); };
     rec.onresult = function (ev) {
       var interina = "";
       for (var i = ev.resultIndex; i < ev.results.length; i++) {
         var r = ev.results[i];
         if (r.isFinal) {
           buffer.push(r[0].transcript);
-          if (modo === "expo") { vaciarBuffer(); }
-          else {
-            if (temporizador) clearTimeout(temporizador);
-            temporizador = setTimeout(vaciarBuffer, 1400);
-          }
+          programarEnvio();
         } else { interina += r[0].transcript; }
       }
-      live.textContent = interina;
+      ultimaInterina = interina;
+      live.textContent = interina || (buffer.length ? buffer.join(" ") : "");
     };
     rec.onerror = function (ev) {
+      if (ev.error === "no-speech" || ev.error === "aborted") return;
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
-        escuchando = false; actualizarMicUI();
-        setEstado("micrófono bloqueado", "err");
-        avisar("El navegador bloqueó el micrófono. Toca el candado junto a la dirección: Permisos, Micrófono, Permitir, y recarga.");
+        detenerConError("micrófono bloqueado", "Chrome no le dio permiso al micrófono. Toca el candado junto a la dirección, entra a Permisos, pon Micrófono en Permitir y recarga la página.");
       } else if (ev.error === "network") {
-        avisar("El reconocimiento de voz perdió la conexión. Revisa el internet.");
+        detenerConError("sin conexión", "El reconocimiento de voz necesita internet y perdió la conexión. Revisa la red y toca el micrófono otra vez.");
+      } else if (ev.error === "audio-capture") {
+        detenerConError("sin micrófono", "No se detecta el micrófono. Cierra las apps que lo estén usando (llamadas, grabadora, transcripción) y toca otra vez.");
+      } else {
+        detenerConError("error de voz", "El reconocimiento de voz falló (" + ev.error + "). Toca el micrófono otra vez.");
       }
     };
     rec.onend = function () {
-      if (escuchando) { try { rec.start(); } catch (e) {} }
-      else { live.textContent = ""; }
+      if (ultimaInterina.trim()) {
+        buffer.push(ultimaInterina);
+        ultimaInterina = "";
+        programarEnvio();
+      }
+      if (escuchando) {
+        setTimeout(function () { if (escuchando) { try { rec.start(); } catch (e) {} } }, 250);
+      } else { live.textContent = ""; }
     };
-    try { rec.start(); setEstado("escuchando", "on"); } catch (e) {}
-  }
-
-  function actualizarMicUI() {
-    btnMic.classList.toggle("escuchando", escuchando);
-    micTexto.textContent = escuchando ? "Escuchando en inglés, toca para pausar" : "Toca para escuchar en inglés";
-    if (!escuchando) refrescarEstado();
+    try { rec.start(); }
+    catch (e) { detenerConError("error de voz", "No se pudo iniciar el micrófono. Recarga la página e intenta de nuevo."); }
   }
 
   btnMic.addEventListener("click", function () {
     if (!clave()) { abrirAjustes(); return; }
-    escuchando = !escuchando;
-    if (escuchando) { avisar(""); arrancarMic(); } else { if (rec) try { rec.stop(); } catch (e) {} vaciarBuffer(); }
-    actualizarMicUI();
+    if (escuchando) {
+      escuchando = false;
+      if (rec) { try { rec.stop(); } catch (e) {} }
+      vaciarBuffer();
+      pintarMic();
+      refrescarEstado();
+    } else {
+      escuchando = true;
+      avisar("");
+      pintarMic();
+      arrancarMic();
+    }
   });
 
   function setModo(m) {
