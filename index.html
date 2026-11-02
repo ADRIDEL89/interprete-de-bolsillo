@@ -412,6 +412,8 @@
 
   var esAndroid = /Android/i.test(navigator.userAgent);
   var ultimaInterina = "";
+  var idioma = "en-GB";
+  var silencios = 0;
 
   function programarEnvio() {
     if (temporizador) clearTimeout(temporizador);
@@ -438,7 +440,7 @@
       return;
     }
     rec = new SR();
-    rec.lang = "en-GB";
+    rec.lang = idioma;
     rec.continuous = !esAndroid;
     rec.interimResults = true;
     rec.onstart = function () {
@@ -447,6 +449,8 @@
     };
     rec.onspeechstart = function () { setEstado("oyendo voz", "on"); };
     rec.onresult = function (ev) {
+      silencios = 0;
+      if (aviso.className) avisar("");
       var interina = "";
       for (var i = ev.resultIndex; i < ev.results.length; i++) {
         var r = ev.results[i];
@@ -459,7 +463,19 @@
       live.textContent = interina || (buffer.length ? buffer.join(" ") : "");
     };
     rec.onerror = function (ev) {
-      if (ev.error === "no-speech" || ev.error === "aborted") return;
+      if (ev.error === "aborted") return;
+      if (ev.error === "no-speech") {
+        silencios++;
+        if (silencios >= 2) {
+          setEstado("no me llega voz", "err");
+          avisar("El micrófono está abierto pero no me llega voz. Acerca el teléfono a quien habla. Si pruebas con un video, ponlo en otro aparato: el sonido que sale de este mismo teléfono no se capta.");
+        }
+        return;
+      }
+      if (ev.error === "language-not-supported" && idioma !== "en-US") {
+        idioma = "en-US";
+        return;
+      }
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
         detenerConError("micrófono bloqueado", "Chrome no le dio permiso al micrófono. Toca el candado junto a la dirección, entra a Permisos, pon Micrófono en Permitir y recarga la página.");
       } else if (ev.error === "network") {
@@ -477,7 +493,11 @@
         programarEnvio();
       }
       if (escuchando) {
-        setTimeout(function () { if (escuchando) { try { rec.start(); } catch (e) {} } }, 250);
+        setTimeout(function () {
+          if (!escuchando) return;
+          if (rec.lang !== idioma) { arrancarMic(); return; }
+          try { rec.start(); } catch (e) {}
+        }, 250);
       } else { live.textContent = ""; }
     };
     try { rec.start(); }
@@ -494,6 +514,7 @@
       refrescarEstado();
     } else {
       escuchando = true;
+      silencios = 0;
       avisar("");
       pintarMic();
       arrancarMic();
