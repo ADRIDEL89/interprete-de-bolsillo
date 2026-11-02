@@ -398,6 +398,7 @@
   function marco() {
     var t = "Eres el intérprete personal de una hispanohablante que trabaja y vive en inglés y está mejorando su nivel. ";
     if (perfil()) t += "Su perfil: " + perfil() + ". ";
+    else t += "No tienes su perfil: nunca inventes cargos, empresas, años de experiencia ni datos personales; si le preguntan por su experiencia, sugiere una frase breve y neutral sin datos concretos. ";
     if (temaReunion()) t += "Tema de la conversación: " + temaReunion() + ". ";
     return t + (GUIAS[tipo()] || GUIAS.diario) + " ";
   }
