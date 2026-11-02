@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Intérprete de Bolsillo</title>
+<style>
+  :root {
+    --bg: #F3F6F8; --surface: #FFFFFF; --ink: #1D2836; --muted: #5A6B7E;
+    --accent: #2A5199; --accent-soft: #E9EFF7; --alerta: #B3402E;
+    --alerta-soft: #F9ECEA; --line: #D9E1E8; --tint: #EDF2F7; --sug: #B5661F; --sug-soft: #F7EFE4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0F151D; --surface: #18212C; --ink: #E7ECF2; --muted: #97A5B6;
+      --accent: #8FB3EC; --accent-soft: #1C2A3E; --alerta: #E08A7A;
+      --alerta-soft: #2E1B18; --line: #2B3644; --tint: #1E2937; --sug: #E2A268; --sug-soft: #2B2318;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 17px; line-height: 1.5;
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 12px 16px 10px; border-bottom: 1px solid var(--line);
+    background: var(--surface); position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 1.05rem; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+  header h1 .sp { flex: 1; }
+  #btnAjustes { border: 1px solid var(--line); background: var(--tint); color: var(--muted);
+                border-radius: 8px; padding: 4px 10px; font-size: .8rem; }
+  #estado { font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+            background: var(--tint); color: var(--muted); }
+  #estado.on { background: var(--accent-soft); color: var(--accent); }
+  #estado.err { background: var(--alerta-soft); color: var(--alerta); }
+  .tabs { display: flex; gap: 8px; }
+  .tabs button {
+    flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--muted); font-size: .9rem; font-weight: 700;
+  }
+  .tabs button.activa { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  #aviso {
+    display: none; margin: 10px 16px 0; padding: 10px 14px; border-radius: 10px;
+    background: var(--alerta-soft); color: var(--alerta); font-size: .9rem;
+  }
+  #aviso.visible { display: block; }
+
+  main { flex: 1; overflow-y: auto; padding: 14px 16px 200px; }
+  #live {
+    min-height: 1.4em; color: var(--muted); font-style: italic; font-size: .95rem;
+    margin: 0 0 10px;
+  }
+  .turno { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+           padding: 12px 16px; margin-bottom: 12px; }
+  .turno .en { color: var(--muted); font-size: .88rem; margin: 0 0 4px; }
+  .turno .es { font-size: 1.12rem; margin: 0; font-weight: 600; }
+  .turno .es.espera { color: var(--muted); font-weight: 400; font-style: italic; }
+  .sugs { margin-top: 10px; display: grid; gap: 8px; }
+  .sug {
+    text-align: left; border: 1px solid var(--line); background: var(--sug-soft);
+    border-radius: 10px; padding: 10px 12px; font-size: 1rem; color: var(--ink); width: 100%;
+  }
+  .sug b { color: var(--sug); font-size: 1.05rem; }
+  .sug .pr { display: block; color: var(--muted); font-size: .88rem; }
+  .sug .tr { display: block; color: var(--muted); font-size: .8rem; }
+  .sug.grande b { font-size: 1.5rem; line-height: 1.3; }
+  .sug.grande .pr { font-size: 1.1rem; }
+  .linea { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+           padding: 10px 14px; margin-bottom: 8px; }
+  .linea .en { color: var(--muted); font-size: .82rem; margin: 0; }
+  .linea .es { margin: 2px 0 0; font-size: 1.05rem; }
+  .comodigo { background: var(--accent-soft); border: 1px solid var(--line); border-radius: 12px;
+              padding: 10px 14px; margin-bottom: 10px; }
+  .comodigo .es { color: var(--muted); font-size: .85rem; margin: 0; }
+  .comodigo .en { font-size: 1.2rem; font-weight: 700; margin: 2px 0 0; color: var(--accent); }
+  .comodigo .pr { color: var(--muted); font-size: .95rem; margin: 0; }
+
+  footer {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 5;
+    background: var(--surface); border-top: 1px solid var(--line);
+    padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); display: grid; gap: 8px;
+  }
+  .fila { display: flex; gap: 8px; align-items: center; }
+  .fila input {
+    flex: 1; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); font-size: 16px; min-width: 0;
+  }
+  .fila button {
+    padding: 10px 14px; border-radius: 12px; border: none; background: var(--accent);
+    color: #fff; font-weight: 700; font-size: .9rem; white-space: nowrap;
+  }
+  #btnMic {
+    width: 64px; height: 64px; border-radius: 50%; border: none; background: var(--accent);
+    color: #fff; font-size: 26px; margin: 0 auto; display: flex; align-items: center;
+    justify-content: center; box-shadow: 0 2px 10px rgba(0,0,0,.18);
+  }
+  #btnMic.escuchando { background: var(--alerta); animation: pulso 1.4s infinite; }
+  @keyframes pulso { 0%,100% { transform: scale(1);} 50% { transform: scale(1.08);} }
+  @media (prefers-reduced-motion: reduce) { #btnMic.escuchando { animation: none; } }
+  #micTexto { text-align: center; font-size: .78rem; color: var(--muted); margin: 0; }
+  #btnCopiar { display: none; margin: 0 auto; background: none; border: 1px solid var(--line);
+               color: var(--muted); border-radius: 999px; padding: 6px 16px; font-size: .82rem; }
+  .modo-expo #btnCopiar { display: block; }
+
+  #panelAjustes {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 20;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  #panelAjustes.visible { display: flex; }
+  .tarjeta {
+    background: var(--surface); border-radius: 16px; padding: 22px; max-width: 420px; width: 100%;
+    display: grid; gap: 12px; max-height: 85vh; overflow-y: auto;
+  }
+  .tarjeta h2 { margin: 0; font-size: 1.1rem; }
+  .tarjeta p { margin: 0; font-size: .88rem; color: var(--muted); }
+  .tarjeta input[type="password"] {
+    width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); font-size: 15px;
+  }
+  .tarjeta label { font-size: .9rem; display: flex; gap: 8px; align-items: center; }
+  .tarjeta .acciones { display: flex; gap: 8px; }
+  .tarjeta .acciones button { padding: 9px 16px; border-radius: 10px; border: none; font-weight: 700; }
+  #btnGuardar { background: var(--accent); color: #fff; }
+  #btnCerrarAjustes { background: var(--tint); color: var(--muted); }
+  #btnBorrarClave { background: none; border: 1px solid var(--line); color: var(--alerta);
+                    border-radius: 10px; padding: 8px 12px; font-size: .82rem; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Intérprete de Bolsillo <span id="estado">iniciando…</span><span class="sp"></span>
+    <button id="btnAjustes" type="button">Ajustes</button></h1>
+  <div class="tabs">
+    <button id="tabConv" class="activa" type="button">Reunión</button>
+    <button id="tabExpo" type="button">Exposición</button>
+  </div>
+</header>
+
+<div id="aviso"></div>
+
+<main>
+  <p id="live"></p>
+  <div id="feed"></div>
+</main>
+
+<footer>
+  <button id="btnMic" type="button" aria-label="Micrófono">&#127908;</button>
+  <p id="micTexto">Toca para escuchar en inglés</p>
+  <button id="btnCopiar" type="button">Copiar transcripción</button>
+  <form class="fila" id="formTexto">
+    <input id="inTexto" placeholder="O escribe aquí lo que dijeron (inglés)" autocomplete="off">
+    <button type="submit">Traducir</button>
+  </form>
+  <form class="fila" id="formDigo">
+    <input id="inDigo" placeholder="¿Cómo digo…? (escribe en español)" autocomplete="off">
+    <button type="submit">En inglés</button>
+  </form>
+</footer>
+
+<div id="panelAjustes">
+  <div class="tarjeta">
+    <h2>Ajustes</h2>
+    <p>Pega tu clave API de Anthropic (empieza con «sk-ant-»). Se guarda solo en este teléfono
+       y se envía únicamente a api.anthropic.com. No la compartas con nadie.</p>
+    <input type="password" id="inClave" placeholder="sk-ant-…" autocomplete="off">
+    <p>Motor:</p>
+    <label><input type="radio" name="motor" value="claude-haiku-5-5" checked> Rápido (Haiku): ideal para tiempo real, costo mínimo</label>
+    <label><input type="radio" name="motor" value="claude-opus-5-5"> Calidad (Opus): sugerencias más finas, tarda y cuesta más</label>
+    <div class="acciones">
+      <button id="btnBorrarClave" type="button">Borrar clave</button>
+      <span style="flex:1"></span>
+      <button id="btnCerrarAjustes" type="button">Cerrar</button>
+      <button id="btnGuardar" type="button">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var estado = $("estado"), aviso = $("aviso"), live = $("live"), feed = $("feed");
+  var btnMic = $("btnMic"), micTexto = $("micTexto");
+  var modo = "conv";
+  var historia = [];
+  var ocupado = false, cola = [];
+  var buffer = [], temporizador = null;
+  var escuchando = false, rec = null;
+
+  function leerLS(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function escribirLS(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+  function clave() { return leerLS("ib_clave") || ""; }
+  function motor() { return leerLS("ib_motor") || "claude-haiku-5-5"; }
+
+  function abrirAjustes() {
+    $("inClave").value = clave();
+    var m = motor();
+    document.querySelectorAll('input[name="motor"]').forEach(function (r) { r.checked = (r.value === m); });
+    $("panelAjustes").className = "visible";
+  }
+  $("btnAjustes").addEventListener("click", abrirAjustes);
+  $("btnCerrarAjustes").addEventListener("click", function () { $("panelAjustes").className = ""; });
+  $("btnGuardar").addEventListener("click", function () {
+    var v = $("inClave").value.trim();
+    if (v) escribirLS("ib_clave", v);
+    var sel = document.querySelector('input[name="motor"]:checked');
+    if (sel) escribirLS("ib_motor", sel.value);
+    $("panelAjustes").className = "";
+    refrescarEstado();
+  });
+  $("btnBorrarClave").addEventListener("click", function () {
+    escribirLS("ib_clave", null); $("inClave").value = ""; refrescarEstado();
+  });
+
+  function setEstado(txt, clase) { estado.textContent = txt; estado.className = clase || ""; }
+  function avisar(msj) {
+    if (!msj) { aviso.className = ""; aviso.textContent = ""; return; }
+    aviso.textContent = msj; aviso.className = "visible";
+  }
+  function refrescarEstado() {
+    if (!clave()) {
+      setEstado("sin clave", "err");
+      avisar("Falta tu clave API. Toca Ajustes (arriba a la derecha), pégala y guarda.");
+    } else { setEstado(escuchando ? "escuchando" : "listo", escuchando ? "on" : ""); avisar(""); }
+  }
+
+  function llamarClaude(prompt) {
+    if (!clave()) { refrescarEstado(); return Promise.reject({ propio: "sin_clave" }); }
+    return fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": clave(),
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: motor(),
+        max_tokens: 2048,
+        output_config: { effort: "low" },
+        messages: [{ role: "user", content: prompt }]
+      })
+    }).then(function (resp) {
+      if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (cuerpo) {
+        throw { propio: "http", status: resp.status, cuerpo: cuerpo };
+      });
+      return resp.json();
+    }).then(function (data) {
+      if (data.stop_reason === "refusal") throw { propio: "refusal" };
+      var texto = (data.content || []).filter(function (b) { return b.type === "text"; })
+        .map(function (b) { return b.text; }).join("");
+      if (!texto) throw { propio: "vacio" };
+      return texto;
+    });
+  }
+  function extraerJSON(texto) {
+    try { return JSON.parse(texto); } catch (e) {}
+    var i = texto.indexOf("{"), f = texto.lastIndexOf("}");
+    if (i >= 0 && f > i) { try { return JSON.parse(texto.slice(i, f + 1)); } catch (e) {} }
+    return null;
+  }
+  function copiaError(e) {
+    if (!e) return "Error desconocido.";
+    if (e.propio === "sin_clave") return "Falta la clave API: tócala en Ajustes.";
+    if (e.propio === "refusal") return "Claude declinó ese contenido.";
+    if (e.propio === "vacio") return "Respuesta vacía, intenta de nuevo.";
+    if (e.propio === "http") {
+      if (e.status === 401) return "La clave API no es válida: revísala en Ajustes.";
+      if (e.status === 429) return "Demasiadas consultas o límite alcanzado: espera un momento.";
+      if (e.status === 529 || e.status >= 500) return "El servicio está saturado, intenta en unos segundos.";
+      var msj = e.cuerpo && e.cuerpo.error && e.cuerpo.error.message;
+      return msj ? ("Error de la API: " + msj) : ("Error " + e.status + ".");
+    }
+    return "Sin conexión con la API. Revisa el internet.";
+  }
+
+  function contexto() {
+    return historia.slice(-8).map(function (h) { return h.quien + ": " + h.texto; }).join("\n") || "(inicio de la conversación)";
+  }
+  function procesarCola() {
+    if (ocupado || !cola.length) return;
+    ocupado = true;
+    var tarea = cola.shift();
+    tarea().catch(function () {}).then(function () { ocupado = false; procesarCola(); });
+  }
+  function encolar(fn) { cola.push(fn); procesarCola(); }
+
+  function turnoConversacion(texto) {
+    var card = document.createElement("div");
+    card.className = "turno";
+    var en = document.createElement("p"); en.className = "en"; en.textContent = texto;
+    var es = document.createElement("p"); es.className = "es espera"; es.textContent = "Traduciendo…";
+    card.appendChild(en); card.appendChild(es);
+    feed.appendChild(card); card.scrollIntoView({ block: "end" });
+    historia.push({ quien: "Interlocutor", texto: texto });
+
+    encolar(function () {
+      var prompt =
+        "Eres el intérprete personal de Adriana, hispanohablante de nivel A2 en una reunión en Baréin. " +
+        "Te paso lo último que dijo su interlocutor en inglés, transcrito por voz (puede traer errores; interpreta lo más probable).\n\n" +
+        "Contexto previo:\n" + contexto() +
+        "\n\nDijeron: «" + texto + "»\n\n" +
+        "Responde SOLO con un objeto JSON exactamente así: " +
+        '{"es":"traducción natural al español","sug":[{"en":"respuesta breve en inglés sencillo nivel A2",' +
+        '"pr":"pronunciación aproximada en español, sílabas con guiones, la tónica con tilde y ↗ o ↘ al final",' +
+        '"es":"qué significa"}]} ' +
+        "con 2 o 3 sugerencias que respondan de verdad al contexto. Nada de texto fuera del JSON.";
+      return llamarClaude(prompt).then(function (texto2) {
+        var r = extraerJSON(texto2) || {};
+        es.textContent = r.es || "(sin traducción)"; es.className = "es";
+        historia.push({ quien: "Traducción", texto: r.es || "" });
+        var lista = Array.isArray(r.sug) ? r.sug.slice(0, 3) : [];
+        if (lista.length) {
+          var wrap = document.createElement("div"); wrap.className = "sugs";
+          lista.forEach(function (sg) {
+            var b = document.createElement("button");
+            b.type = "button"; b.className = "sug";
+            var en2 = document.createElement("b"); en2.textContent = String(sg.en || "");
+            var pr = document.createElement("span"); pr.className = "pr"; pr.textContent = String(sg.pr || "");
+            var tr = document.createElement("span"); tr.className = "tr"; tr.textContent = String(sg.es || "");
+            b.appendChild(en2); b.appendChild(pr); b.appendChild(tr);
+            b.addEventListener("click", function () { b.classList.toggle("grande"); });
+            wrap.appendChild(b);
+          });
+          card.appendChild(wrap); card.scrollIntoView({ block: "end" });
+        }
+      }).catch(function (e) {
+        es.className = "es"; es.textContent = "(" + copiaError(e) + ")";
+      });
+    });
+  }
+
+  var transcripcion = [];
+  function lineaExposicion(texto) {
+    var div = document.createElement("div"); div.className = "linea";
+    var en = document.createElement("p"); en.className = "en"; en.textContent = texto;
+    var es = document.createElement("p"); es.className = "es"; es.textContent = "…";
+    div.appendChild(en); div.appendChild(es);
+    feed.appendChild(div); div.scrollIntoView({ block: "end" });
+    encolar(function () {
+      var prompt = "Traduce al español natural este fragmento de una charla en inglés transcrita por voz " +
+        "(corrige errores evidentes de transcripción). Responde solo con la traducción, sin comentarios:\n«" +
+        texto + "»";
+      return llamarClaude(prompt).then(function (t) {
+        es.textContent = t.trim();
+        transcripcion.push(texto + "\n" + t.trim());
+        div.scrollIntoView({ block: "end" });
+      }).catch(function (e) { es.textContent = "(" + copiaError(e) + ")"; });
+    });
+  }
+
+  $("btnCopiar").addEventListener("click", function () {
+    var t = transcripcion.join("\n\n");
+    if (!t) { avisar("Todavía no hay transcripción que copiar."); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(function () {
+        avisar(""); setEstado("transcripción copiada", "on");
+        setTimeout(refrescarEstado, 1500);
+      }).catch(function () { avisar("No se pudo copiar automático."); });
+    } else { avisar("Este navegador no permite copiar automático."); }
+  });
+
+  $("formDigo").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var texto = $("inDigo").value.trim(); if (!texto) return;
+    $("inDigo").value = "";
+    var div = document.createElement("div"); div.className = "comodigo";
+    var esP = document.createElement("p"); esP.className = "es"; esP.textContent = "Quieres decir: " + texto;
+    var enP = document.createElement("p"); enP.className = "en"; enP.textContent = "…";
+    var prP = document.createElement("p"); prP.className = "pr"; prP.textContent = "";
+    div.appendChild(esP); div.appendChild(enP); div.appendChild(prP);
+    feed.appendChild(div); div.scrollIntoView({ block: "end" });
+    encolar(function () {
+      var prompt = "Adriana (nivel A2) quiere decir en inglés: «" + texto + "». " +
+        'Responde SOLO con un objeto JSON: {"en":"la frase en inglés sencillo y natural","pr":"pronunciación aproximada ' +
+        'en español, sílabas con guiones, tónica con tilde y ↗ o ↘ al final"}. Nada fuera del JSON.';
+      return llamarClaude(prompt).then(function (t) {
+        var r = extraerJSON(t) || {};
+        enP.textContent = String(r.en || "(sin respuesta)");
+        prP.textContent = String(r.pr || "");
+        historia.push({ quien: "Adriana", texto: String(r.en || texto) });
+        div.scrollIntoView({ block: "end" });
+      }).catch(function (e) { enP.textContent = "(" + copiaError(e) + ")"; });
+    });
+  });
+
+  $("formTexto").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var texto = $("inTexto").value.trim(); if (!texto) return;
+    $("inTexto").value = "";
+    if (modo === "conv") turnoConversacion(texto); else lineaExposicion(texto);
+  });
+
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+
+  function vaciarBuffer() {
+    if (temporizador) { clearTimeout(temporizador); temporizador = null; }
+    if (!buffer.length) return;
+    var texto = buffer.join(" ").replace(/\s+/g, " ").trim();
+    buffer = [];
+    if (!texto) return;
+    if (modo === "conv") turnoConversacion(texto); else lineaExposicion(texto);
+  }
+
+  function arrancarMic() {
+    if (!SR) {
+      avisar("Este navegador no tiene reconocimiento de voz (usa Chrome en Android). Mientras tanto escribe o pega el texto abajo.");
+      setEstado("sin micrófono", "err");
+      escuchando = false; actualizarMicUI();
+      return;
+    }
+    rec = new SR();
+    rec.lang = "en-GB";
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = function (ev) {
+      var interina = "";
+      for (var i = ev.resultIndex; i < ev.results.length; i++) {
+        var r = ev.results[i];
+        if (r.isFinal) {
+          buffer.push(r[0].transcript);
+          if (modo === "expo") { vaciarBuffer(); }
+          else {
+            if (temporizador) clearTimeout(temporizador);
+            temporizador = setTimeout(vaciarBuffer, 1400);
+          }
+        } else { interina += r[0].transcript; }
+      }
+      live.textContent = interina;
+    };
+    rec.onerror = function (ev) {
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+        escuchando = false; actualizarMicUI();
+        setEstado("micrófono bloqueado", "err");
+        avisar("El navegador bloqueó el micrófono. Toca el candado junto a la dirección: Permisos, Micrófono, Permitir, y recarga.");
+      } else if (ev.error === "network") {
+        avisar("El reconocimiento de voz perdió la conexión. Revisa el internet.");
+      }
+    };
+    rec.onend = function () {
+      if (escuchando) { try { rec.start(); } catch (e) {} }
+      else { live.textContent = ""; }
+    };
+    try { rec.start(); setEstado("escuchando", "on"); } catch (e) {}
+  }
+
+  function actualizarMicUI() {
+    btnMic.classList.toggle("escuchando", escuchando);
+    micTexto.textContent = escuchando ? "Escuchando en inglés, toca para pausar" : "Toca para escuchar en inglés";
+    if (!escuchando) refrescarEstado();
+  }
+
+  btnMic.addEventListener("click", function () {
+    if (!clave()) { abrirAjustes(); return; }
+    escuchando = !escuchando;
+    if (escuchando) { avisar(""); arrancarMic(); } else { if (rec) try { rec.stop(); } catch (e) {} vaciarBuffer(); }
+    actualizarMicUI();
+  });
+
+  function setModo(m) {
+    modo = m;
+    $("tabConv").className = m === "conv" ? "activa" : "";
+    $("tabExpo").className = m === "expo" ? "activa" : "";
+    document.body.classList.toggle("modo-expo", m === "expo");
+    vaciarBuffer();
+  }
+  $("tabConv").addEventListener("click", function () { setModo("conv"); });
+  $("tabExpo").addEventListener("click", function () { setModo("expo"); });
+
+  refrescarEstado();
+  if (!clave()) abrirAjustes();
+})();
+</script>
+</body>
+</html>
