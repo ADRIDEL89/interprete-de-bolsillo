@@ -54,10 +54,18 @@
   #feed > div:not(:first-child) { opacity: .6; }
   #feed > div:first-child { border-color: var(--accent); }
   #feed > .linea:first-child .es { font-size: 1.3rem; font-weight: 600; }
-  #subs { display: none; background: #111820; color: #FFFFFF; border-radius: 14px;
-          padding: 18px 22px; margin-bottom: 12px; min-height: 150px; }
-  .modo-expo #subs { display: block; }
-  .modo-expo #feed { display: none; }
+  #subs { display: block; background: #111820; color: #FFFFFF; border-radius: 14px;
+          padding: 18px 22px; margin-bottom: 12px; min-height: 120px; }
+  #respuesta { display: none; background: var(--sug-soft); border: 2px solid var(--sug);
+               border-radius: 14px; padding: 14px 18px; margin-bottom: 12px; }
+  #respuesta.visible { display: block; }
+  .modo-expo #respuesta.visible { display: none; }
+  #respuesta .r-tit { margin: 0 0 6px; font-size: .75rem; font-weight: 800; letter-spacing: .08em;
+                      text-transform: uppercase; color: var(--sug); }
+  #rPregunta { margin: 0 0 8px; font-size: .9rem; color: var(--muted); }
+  #rEn { margin: 10px 0 2px; font-size: 1.45rem; font-weight: 700; line-height: 1.3; color: var(--ink); }
+  #rPr { margin: 0; font-size: 1.05rem; color: var(--muted); }
+  #rEs { margin: 4px 0 0; font-size: .9rem; color: var(--muted); }
   #subPrev { margin: 0 0 10px; font-size: 1.05rem; line-height: 1.4; color: #9FB0C3; }
   #subActual { margin: 0; font-size: 1.55rem; font-weight: 600; line-height: 1.4; color: #FFFFFF; }
   #live {
@@ -114,7 +122,7 @@
   @keyframes pulso { 0%,100% { transform: scale(1);} 50% { transform: scale(1.08);} }
   @media (prefers-reduced-motion: reduce) { #btnMic.escuchando { animation: none; } }
   #micTexto { text-align: center; font-size: .78rem; color: var(--muted); margin: 0; }
-  #btnCopiar { display: none; margin: 0 auto; background: none; border: 1px solid var(--line);
+  #btnCopiar { display: block; margin: 0 auto; background: none; border: 1px solid var(--line);
                color: var(--muted); border-radius: 999px; padding: 6px 16px; font-size: .82rem; }
   .modo-expo #btnCopiar { display: block; }
   #btnPantalla { margin: 0 auto; background: var(--accent-soft); border: 1px solid var(--line);
@@ -168,6 +176,14 @@
   <div id="subs" aria-live="polite">
     <p id="subPrev"></p>
     <p id="subActual">Los subtítulos en español aparecen aquí.</p>
+  </div>
+  <div id="respuesta" aria-live="polite">
+    <p class="r-tit">Para responder</p>
+    <p id="rPregunta"></p>
+    <p id="rConcepto" class="concepto"></p>
+    <p id="rEn"></p>
+    <p id="rPr"></p>
+    <p id="rEs"></p>
   </div>
   <p id="live"></p>
   <div id="feed"></div>
@@ -458,24 +474,43 @@
     }
   }, 250);
 
-  function turnoConversacion(texto) {
-    var card = document.createElement("div");
-    card.className = "turno";
-    var en = document.createElement("p"); en.className = "en"; en.textContent = texto;
-    var es = document.createElement("p"); es.className = "es espera"; es.textContent = "Traduciendo…";
-    card.appendChild(en); card.appendChild(es);
-    ponerArriba(card);
-    historia.push({ quien: "Interlocutor", texto: texto });
+  function mostrarRespuesta(sobre, concepto, sg) {
+    $("rPregunta").textContent = "Sobre: " + sobre;
+    $("rConcepto").textContent = concepto ? "Concepto: " + concepto : "";
+    $("rConcepto").style.display = concepto ? "" : "none";
+    $("rEn").textContent = String(sg.en || "");
+    $("rPr").textContent = String(sg.pr || "");
+    $("rEs").textContent = String(sg.es || "");
+    $("respuesta").classList.add("visible");
+  }
 
-    traducirEn(es, texto, function (t) { historia.push({ quien: "Traducción", texto: t }); });
+  function turnoConversacion(texto) {
+    historia.push({ quien: "Interlocutor", texto: texto });
+    var traduccion = "";
+    var posicion = transcripcion.length;
+    transcripcion.push(texto);
+    var posSub = subsTextos.length;
+    subsTextos.push("");
+    var previo = ultimoIngles;
+    ultimoIngles = texto;
+    traducirEn(document.createElement("p"), texto,
+      function (t) {
+        traduccion = t;
+        transcripcion[posicion] = texto + "\n" + t;
+        historia.push({ quien: "Traducción", texto: t });
+      },
+      function (t) { subsTextos[posSub] = t; pintarSubs(); },
+      previo);
 
     encolar(function () {
       var prompt = marco() +
         "Te paso lo último que dijo su interlocutor en inglés, transcrito por voz (puede traer errores; interpreta lo más probable).\n\n" +
         "Contexto previo:\n" + contexto() +
         "\n\nDijeron: «" + texto + "»\n\n" +
-        "Si le hicieron una pregunta, la sugerencia es una respuesta directa que ella puede decir tal cual, apoyada en su perfil real; " +
-        "no inventes cifras, fechas, cargos ni proyectos que el perfil no diga.\n\n" +
+        "Si le hicieron una pregunta o se espera que ella intervenga, la sugerencia es una respuesta directa que ella puede decir tal cual, apoyada en su perfil real; " +
+        "no inventes cifras, fechas, cargos ni proyectos que el perfil no diga. " +
+        "Si nadie le preguntó nada (el interlocutor solo explica o comenta) o el texto parece ser la propia usuaria hablando, " +
+        'responde exactamente {"concepto":"","sug":[]}.\n\n' +
         "Responde SOLO con un objeto JSON exactamente así: " +
         '{"concepto":"en español, una o dos frases que expliquen el concepto o término clave del que hablan o preguntan; vacío si es algo cotidiano",' +
         '"sug":[{"en":"respuesta sugerida en inglés, con el registro indicado",' +
@@ -484,41 +519,18 @@
         "con UNA sola sugerencia en la lista: la mejor respuesta para este momento de la conversación. Nada de texto fuera del JSON.";
       return llamarClaude(prompt).then(function (texto2) {
         var r = extraerJSON(texto2) || {};
-        if (r.concepto && String(r.concepto).trim()) {
-          var con = document.createElement("p"); con.className = "concepto";
-          con.textContent = "Concepto: " + String(r.concepto).trim();
-          card.appendChild(con);
-        }
-        var lista = Array.isArray(r.sug) ? r.sug.slice(0, 1) : [];
-        if (lista.length) {
-          var wrap = document.createElement("div"); wrap.className = "sugs";
-          lista.forEach(function (sg) {
-            var b = document.createElement("button");
-            b.type = "button"; b.className = "sug grande";
-            var en2 = document.createElement("b"); en2.textContent = String(sg.en || "");
-            var pr = document.createElement("span"); pr.className = "pr"; pr.textContent = String(sg.pr || "");
-            var tr = document.createElement("span"); tr.className = "tr"; tr.textContent = String(sg.es || "");
-            b.appendChild(en2); b.appendChild(pr); b.appendChild(tr);
-            b.addEventListener("click", function () { b.classList.toggle("grande"); });
-            wrap.appendChild(b);
-          });
-          card.appendChild(wrap);
-        }
+        var sg = Array.isArray(r.sug) && r.sug[0] ? r.sug[0] : null;
+        if (!sg || !String(sg.en || "").trim()) return;
+        mostrarRespuesta(traduccion || texto, String(r.concepto || "").trim(), sg);
       }).catch(function (e) {
-        var aviso2 = document.createElement("p"); aviso2.className = "tr";
-        aviso2.textContent = "(sugerencias: " + copiaError(e) + ")";
-        card.appendChild(aviso2);
+        avisar("Sugerencias: " + copiaError(e));
       });
     });
   }
 
   var transcripcion = [];
   function lineaExposicion(texto) {
-    var div = document.createElement("div"); div.className = "linea";
-    var en = document.createElement("p"); en.className = "en"; en.textContent = texto;
-    var es = document.createElement("p"); es.className = "es espera"; es.textContent = "…";
-    div.appendChild(en); div.appendChild(es);
-    ponerArriba(div);
+    var es = document.createElement("p");
     var posicion = transcripcion.length;
     transcripcion.push(texto);
     var posSub = subsTextos.length;
