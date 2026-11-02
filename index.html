@@ -50,7 +50,16 @@
   }
   #aviso.visible { display: block; }
 
-  main { flex: 1; overflow-y: auto; padding: 14px 16px 200px; }
+  main { flex: 1; overflow-y: auto; padding: 14px 16px 340px; }
+  #feed > div:not(:first-child) { opacity: .6; }
+  #feed > div:first-child { border-color: var(--accent); }
+  #feed > .linea:first-child .es { font-size: 1.3rem; font-weight: 600; }
+  #subs { display: none; background: #111820; color: #FFFFFF; border-radius: 14px;
+          padding: 18px 22px; margin-bottom: 12px; min-height: 150px; }
+  .modo-expo #subs { display: block; }
+  .modo-expo #feed { display: none; }
+  #subPrev { margin: 0 0 10px; font-size: 1.05rem; line-height: 1.4; color: #9FB0C3; }
+  #subActual { margin: 0; font-size: 1.55rem; font-weight: 600; line-height: 1.4; color: #FFFFFF; }
   #live {
     min-height: 1.4em; color: var(--muted); font-style: italic; font-size: .95rem;
     margin: 0 0 10px;
@@ -154,6 +163,10 @@
 <div id="aviso"></div>
 
 <main>
+  <div id="subs" aria-live="polite">
+    <p id="subPrev"></p>
+    <p id="subActual">Los subtítulos en español aparecen aquí.</p>
+  </div>
   <p id="live"></p>
   <div id="feed"></div>
 </main>
@@ -260,8 +273,17 @@
     } else { setEstado(escuchando ? "escuchando" : "listo", escuchando ? "on" : ""); avisar(""); }
   }
 
-  function llamarClaude(prompt) {
-    if (!clave()) { refrescarEstado(); return Promise.reject({ propio: "sin_clave" }); }
+  function pedir(prompt, conStream) {
+    var m = motor();
+    var cuerpo = {
+      model: m,
+      max_tokens: 2048,
+      output_config: { effort: "low" },
+      messages: [{ role: "user", content: prompt }]
+    };
+    if (m.indexOf("haiku") >= 0) cuerpo.thinking = { type: "disabled" };
+    else if (m.indexOf("sonnet") >= 0) cuerpo.thinking = { type: "between_tools" };
+    if (conStream) cuerpo.stream = true;
     return fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -270,16 +292,52 @@
         "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true"
       },
-      body: JSON.stringify({
-        model: motor(),
-        max_tokens: 2048,
-        output_config: { effort: "low" },
-        messages: [{ role: "user", content: prompt }]
-      })
+      body: JSON.stringify(cuerpo)
     }).then(function (resp) {
-      if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (cuerpo) {
-        throw { propio: "http", status: resp.status, cuerpo: cuerpo };
+      if (!resp.ok) return resp.json().catch(function () { return {}; }).then(function (c) {
+        throw { propio: "http", status: resp.status, cuerpo: c };
       });
+      return resp;
+    });
+  }
+
+  function llamarClaudeStream(prompt, alTexto) {
+    if (!clave()) { refrescarEstado(); return Promise.reject({ propio: "sin_clave" }); }
+    return pedir(prompt, true).then(function (resp) {
+      var lector = resp.body.getReader(), dec = new TextDecoder(), resto = "", texto = "", rechazo = false;
+      function leer() {
+        return lector.read().then(function (r) {
+          if (r.done) {
+            if (rechazo) throw { propio: "refusal" };
+            if (!texto) throw { propio: "vacio" };
+            return texto;
+          }
+          resto += dec.decode(r.value, { stream: true });
+          var lineas = resto.split("\n");
+          resto = lineas.pop();
+          lineas.forEach(function (l) {
+            if (l.indexOf("data:") !== 0) return;
+            var d;
+            try { d = JSON.parse(l.slice(5)); } catch (e) { return; }
+            if (d.type === "content_block_delta" && d.delta && d.delta.type === "text_delta") {
+              texto += d.delta.text;
+              alTexto(texto);
+            } else if (d.type === "message_delta" && d.delta && d.delta.stop_reason === "refusal") {
+              rechazo = true;
+            } else if (d.type === "error") {
+              throw { propio: "http", status: 500, cuerpo: { error: d.error } };
+            }
+          });
+          return leer();
+        });
+      }
+      return leer();
+    });
+  }
+
+  function llamarClaude(prompt) {
+    if (!clave()) { refrescarEstado(); return Promise.reject({ propio: "sin_clave" }); }
+    return pedir(prompt, false).then(function (resp) {
       return resp.json();
     }).then(function (data) {
       if (data.stop_reason === "refusal") throw { propio: "refusal" };
@@ -333,30 +391,72 @@
   }
   function encolar(fn) { cola.push(fn); procesarCola(); }
 
+  function ponerArriba(el) {
+    feed.insertBefore(el, feed.firstChild);
+    var principal = document.querySelector("main");
+    if (principal) principal.scrollTop = 0;
+  }
+
+  function promptTraduccion(texto) {
+    return (temaReunion() ? "Tema de la conversación: " + temaReunion() + ". " : "") +
+      "Traduce al español natural este fragmento en inglés transcrito por voz " +
+      "(corrige errores evidentes de transcripción y usa el término técnico estándar en español cuando corresponda). " +
+      "Responde solo con la traducción, sin comentarios:\n«" + texto + "»";
+  }
+
+  function traducirEn(el, texto, alFinal, alParcial) {
+    return llamarClaudeStream(promptTraduccion(texto), function (t) {
+      el.textContent = t;
+      el.classList.remove("espera");
+      if (alParcial) alParcial(t);
+    }).then(function (t) {
+      el.textContent = t.trim();
+      el.classList.remove("espera");
+      if (alParcial) alParcial(t.trim());
+      if (alFinal) alFinal(t.trim());
+    }).catch(function (e) {
+      el.classList.remove("espera");
+      el.textContent = "(" + copiaError(e) + ")";
+      if (alParcial) alParcial("(" + copiaError(e) + ")");
+    });
+  }
+
+  var subsTextos = [];
+  function pintarSubs() {
+    var ult = -1, pen = -1;
+    for (var i = subsTextos.length - 1; i >= 0; i--) {
+      if (subsTextos[i]) {
+        if (ult < 0) ult = i;
+        else { pen = i; break; }
+      }
+    }
+    $("subActual").textContent = ult >= 0 ? subsTextos[ult] : "Los subtítulos en español aparecen aquí.";
+    $("subPrev").textContent = pen >= 0 ? subsTextos[pen] : "";
+  }
+
   function turnoConversacion(texto) {
     var card = document.createElement("div");
     card.className = "turno";
     var en = document.createElement("p"); en.className = "en"; en.textContent = texto;
     var es = document.createElement("p"); es.className = "es espera"; es.textContent = "Traduciendo…";
     card.appendChild(en); card.appendChild(es);
-    feed.appendChild(card); card.scrollIntoView({ block: "end" });
+    ponerArriba(card);
     historia.push({ quien: "Interlocutor", texto: texto });
+
+    traducirEn(es, texto, function (t) { historia.push({ quien: "Traducción", texto: t }); });
 
     encolar(function () {
       var prompt = marco() +
-        "Te paso lo último que dijo su interlocutor en inglés, transcrito por voz (puede traer errores; interpreta lo más probable). " +
-        "Traduce los términos técnicos con su equivalente técnico estándar en español.\n\n" +
+        "Te paso lo último que dijo su interlocutor en inglés, transcrito por voz (puede traer errores; interpreta lo más probable).\n\n" +
         "Contexto previo:\n" + contexto() +
         "\n\nDijeron: «" + texto + "»\n\n" +
         "Responde SOLO con un objeto JSON exactamente así: " +
-        '{"es":"traducción natural al español","sug":[{"en":"respuesta sugerida en inglés, con el registro indicado",' +
+        '{"sug":[{"en":"respuesta sugerida en inglés, con el registro indicado",' +
         '"pr":"pronunciación aproximada en español, sílabas con guiones, la tónica con tilde y ↗ o ↘ al final",' +
         '"es":"qué significa"}]} ' +
         "con 2 o 3 sugerencias que respondan de verdad al contexto. Nada de texto fuera del JSON.";
       return llamarClaude(prompt).then(function (texto2) {
         var r = extraerJSON(texto2) || {};
-        es.textContent = r.es || "(sin traducción)"; es.className = "es";
-        historia.push({ quien: "Traducción", texto: r.es || "" });
         var lista = Array.isArray(r.sug) ? r.sug.slice(0, 3) : [];
         if (lista.length) {
           var wrap = document.createElement("div"); wrap.className = "sugs";
@@ -370,10 +470,12 @@
             b.addEventListener("click", function () { b.classList.toggle("grande"); });
             wrap.appendChild(b);
           });
-          card.appendChild(wrap); card.scrollIntoView({ block: "end" });
+          card.appendChild(wrap);
         }
       }).catch(function (e) {
-        es.className = "es"; es.textContent = "(" + copiaError(e) + ")";
+        var aviso2 = document.createElement("p"); aviso2.className = "tr";
+        aviso2.textContent = "(sugerencias: " + copiaError(e) + ")";
+        card.appendChild(aviso2);
       });
     });
   }
@@ -382,20 +484,16 @@
   function lineaExposicion(texto) {
     var div = document.createElement("div"); div.className = "linea";
     var en = document.createElement("p"); en.className = "en"; en.textContent = texto;
-    var es = document.createElement("p"); es.className = "es"; es.textContent = "…";
+    var es = document.createElement("p"); es.className = "es espera"; es.textContent = "…";
     div.appendChild(en); div.appendChild(es);
-    feed.appendChild(div); div.scrollIntoView({ block: "end" });
-    encolar(function () {
-      var prompt = (temaReunion() ? "Tema de la charla: " + temaReunion() + ". " : "") +
-        "Traduce al español natural este fragmento de una charla en inglés transcrita por voz " +
-        "(corrige errores evidentes de transcripción y usa el término técnico estándar en español cuando corresponda). " +
-        "Responde solo con la traducción, sin comentarios:\n«" + texto + "»";
-      return llamarClaude(prompt).then(function (t) {
-        es.textContent = t.trim();
-        transcripcion.push(texto + "\n" + t.trim());
-        div.scrollIntoView({ block: "end" });
-      }).catch(function (e) { es.textContent = "(" + copiaError(e) + ")"; });
-    });
+    ponerArriba(div);
+    var posicion = transcripcion.length;
+    transcripcion.push(texto);
+    var posSub = subsTextos.length;
+    subsTextos.push("");
+    traducirEn(es, texto,
+      function (t) { transcripcion[posicion] = texto + "\n" + t; },
+      function (t) { subsTextos[posSub] = t; pintarSubs(); });
   }
 
   $("btnCopiar").addEventListener("click", function () {
@@ -418,7 +516,7 @@
     var enP = document.createElement("p"); enP.className = "en"; enP.textContent = "…";
     var prP = document.createElement("p"); prP.className = "pr"; prP.textContent = "";
     div.appendChild(esP); div.appendChild(enP); div.appendChild(prP);
-    feed.appendChild(div); div.scrollIntoView({ block: "end" });
+    ponerArriba(div);
     encolar(function () {
       var prompt = marco() + "Quiere decir en inglés: «" + texto + "». " +
         'Responde SOLO con un objeto JSON: {"en":"la frase en inglés natural, con el registro indicado","pr":"pronunciación aproximada ' +
@@ -428,7 +526,6 @@
         enP.textContent = String(r.en || "(sin respuesta)");
         prP.textContent = String(r.pr || "");
         historia.push({ quien: "Usuaria", texto: String(r.en || texto) });
-        div.scrollIntoView({ block: "end" });
       }).catch(function (e) { enP.textContent = "(" + copiaError(e) + ")"; });
     });
   });
@@ -469,7 +566,7 @@
 
   function programarEnvio() {
     if (temporizador) clearTimeout(temporizador);
-    var tope = modo === "expo" ? 160 : 320;
+    var tope = modo === "expo" ? 110 : 320;
     if (buffer.join(" ").length >= tope) { vaciarBuffer(); return; }
     temporizador = setTimeout(vaciarBuffer, modo === "expo" ? 900 : 2200);
   }
