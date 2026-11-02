@@ -152,7 +152,7 @@
   }
   .tarjeta h2 { margin: 0; font-size: 1.1rem; }
   .tarjeta p { margin: 0; font-size: .88rem; color: var(--muted); }
-  .tarjeta input[type="password"] {
+  .tarjeta input[type="password"], .tarjeta input[type="text"] {
     width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--bg); color: var(--ink); font-size: 15px;
   }
@@ -229,6 +229,8 @@
       <option value="tecnica">Reunión técnica de trabajo</option>
       <option value="entrevista">Entrevista de trabajo</option>
     </select>
+    <p>Tu nombre (para presentarte; se guarda solo en este aparato):</p>
+    <input type="text" id="inNombre" placeholder="Tu nombre" autocomplete="off">
     <p>Tu perfil profesional (sirve para sugerir respuestas; se guarda solo en este aparato):</p>
     <textarea id="inPerfil" placeholder="Ej.: especialista en cambio climático con experiencia en políticas públicas y modelación energética"></textarea>
     <p>Tema de esta reunión (opcional):</p>
@@ -261,12 +263,14 @@
   function tipo() { return leerLS("ib_tipo") || "diario"; }
   function perfil() { return leerLS("ib_perfil") || ""; }
   function temaReunion() { return leerLS("ib_contexto") || ""; }
+  function nombre() { return leerLS("ib_nombre") || ""; }
 
   function abrirAjustes() {
     $("inClave").value = clave();
     $("selTipo").value = tipo();
     $("inPerfil").value = perfil();
     $("inContexto").value = temaReunion();
+    $("inNombre").value = nombre();
     var m = motor();
     document.querySelectorAll('input[name="motor"]').forEach(function (r) { r.checked = (r.value === m); });
     $("panelAjustes").className = "visible";
@@ -281,6 +285,7 @@
     escribirLS("ib_tipo", $("selTipo").value);
     escribirLS("ib_perfil", $("inPerfil").value.trim() || null);
     escribirLS("ib_contexto", $("inContexto").value.trim() || null);
+    escribirLS("ib_nombre", $("inNombre").value.trim() || null);
     $("panelAjustes").className = "";
     refrescarEstado();
   });
@@ -406,7 +411,9 @@
   };
   var REFERENCIA_TECNICA = "Precisión técnica obligatoria. Referencias: el ajuste correspondiente (corresponding adjustment) se aplica al balance de emisiones que el país reporta para su NDC, no al inventario de gases de efecto invernadero; el país que transfiere ITMO los suma a su balance y el país que los usa los resta, para evitar el doble conteo. El Artículo 6.2 regula enfoques cooperativos entre países con ITMO autorizados; el Artículo 6.4 es el mecanismo centralizado de la ONU (Paris Agreement Crediting Mechanism). Una NDC es la contribución determinada a nivel nacional que cada país comunica bajo el Acuerdo de París. Si no estás seguro de un dato técnico, usa una formulación general correcta. ";
   function marco() {
-    var t = "Eres el intérprete personal de una hispanohablante que trabaja y vive en inglés y está mejorando su nivel. ";
+    var t = "Eres el intérprete personal de una mujer hispanohablante que trabaja y vive en inglés y está mejorando su nivel. ";
+    if (nombre()) t += "Se llama " + nombre() + ". ";
+    else t += "No sabes su nombre: nunca inventes uno; si la respuesta lo necesita, omítelo. ";
     if (perfil()) t += "Su perfil: " + perfil() + ". ";
     else t += "No tienes su perfil: nunca inventes cargos, empresas, años de experiencia ni datos personales; si le preguntan por su experiencia, sugiere una frase breve y neutral sin datos concretos. ";
     if (temaReunion()) t += "Tema de la conversación: " + temaReunion() + ". ";
