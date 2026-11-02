@@ -469,6 +469,8 @@
 
   function programarEnvio() {
     if (temporizador) clearTimeout(temporizador);
+    var tope = modo === "expo" ? 160 : 320;
+    if (buffer.join(" ").length >= tope) { vaciarBuffer(); return; }
     temporizador = setTimeout(vaciarBuffer, modo === "expo" ? 900 : 2200);
   }
 
