@@ -106,6 +106,14 @@
   #btnCopiar { display: none; margin: 0 auto; background: none; border: 1px solid var(--line);
                color: var(--muted); border-radius: 999px; padding: 6px 16px; font-size: .82rem; }
   .modo-expo #btnCopiar { display: block; }
+  #btnPantalla { margin: 0 auto; background: var(--accent-soft); border: 1px solid var(--line);
+                 color: var(--accent); border-radius: 999px; padding: 7px 16px; font-size: .85rem; font-weight: 700; }
+  #btnPantalla.activo { background: var(--alerta-soft); color: var(--alerta); }
+  .tarjeta select, .tarjeta textarea {
+    width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); font-size: 15px; font-family: inherit;
+  }
+  .tarjeta textarea { min-height: 70px; resize: vertical; }
 
   #panelAjustes {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 20;
@@ -153,6 +161,7 @@
 <footer>
   <button id="btnMic" type="button" aria-label="Micrófono">&#127908;</button>
   <p id="micTexto">Toca para escuchar en inglés</p>
+  <button id="btnPantalla" type="button">Escuchar la reunión del computador</button>
   <button id="btnCopiar" type="button">Copiar transcripción</button>
   <form class="fila" id="formTexto">
     <input id="inTexto" placeholder="O escribe aquí lo que dijeron (inglés)" autocomplete="off">
@@ -167,12 +176,23 @@
 <div id="panelAjustes">
   <div class="tarjeta">
     <h2>Ajustes</h2>
-    <p>Pega tu clave API de Anthropic (empieza con «sk-ant-»). Se guarda solo en este teléfono
+    <p>Pega tu clave API de Anthropic (empieza con «sk-ant-»). Se guarda solo en este aparato
        y se envía únicamente a api.anthropic.com. No la compartas con nadie.</p>
     <input type="password" id="inClave" placeholder="sk-ant-…" autocomplete="off">
     <p>Motor:</p>
     <label><input type="radio" name="motor" value="claude-haiku-5-5" checked> Rápido (Haiku): ideal para tiempo real, costo mínimo</label>
+    <label><input type="radio" name="motor" value="claude-sonnet-5-5"> Equilibrado (Sonnet): mejor para entrevistas y reuniones técnicas, cuesta más</label>
     <label><input type="radio" name="motor" value="claude-opus-5-5"> Calidad (Opus): sugerencias más finas, tarda y cuesta más</label>
+    <p>Tipo de conversación:</p>
+    <select id="selTipo">
+      <option value="diario">Colegio y día a día</option>
+      <option value="tecnica">Reunión técnica de trabajo</option>
+      <option value="entrevista">Entrevista de trabajo</option>
+    </select>
+    <p>Tu perfil profesional (sirve para sugerir respuestas; se guarda solo en este aparato):</p>
+    <textarea id="inPerfil" placeholder="Ej.: especialista en cambio climático con experiencia en políticas públicas y modelación energética"></textarea>
+    <p>Tema de esta reunión (opcional):</p>
+    <textarea id="inContexto" placeholder="Ej.: reunión con un banco sobre un proyecto de energía renovable"></textarea>
     <div class="acciones">
       <button id="btnBorrarClave" type="button">Borrar clave</button>
       <span style="flex:1"></span>
@@ -198,9 +218,15 @@
   function escribirLS(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function clave() { return leerLS("ib_clave") || ""; }
   function motor() { return leerLS("ib_motor") || "claude-haiku-5-5"; }
+  function tipo() { return leerLS("ib_tipo") || "diario"; }
+  function perfil() { return leerLS("ib_perfil") || ""; }
+  function temaReunion() { return leerLS("ib_contexto") || ""; }
 
   function abrirAjustes() {
     $("inClave").value = clave();
+    $("selTipo").value = tipo();
+    $("inPerfil").value = perfil();
+    $("inContexto").value = temaReunion();
     var m = motor();
     document.querySelectorAll('input[name="motor"]').forEach(function (r) { r.checked = (r.value === m); });
     $("panelAjustes").className = "visible";
@@ -212,6 +238,9 @@
     if (v) escribirLS("ib_clave", v);
     var sel = document.querySelector('input[name="motor"]:checked');
     if (sel) escribirLS("ib_motor", sel.value);
+    escribirLS("ib_tipo", $("selTipo").value);
+    escribirLS("ib_perfil", $("inPerfil").value.trim() || null);
+    escribirLS("ib_contexto", $("inContexto").value.trim() || null);
     $("panelAjustes").className = "";
     refrescarEstado();
   });
@@ -282,7 +311,19 @@
   }
 
   function contexto() {
-    return historia.slice(-8).map(function (h) { return h.quien + ": " + h.texto; }).join("\n") || "(inicio de la conversación)";
+    return historia.slice(-12).map(function (h) { return h.quien + ": " + h.texto; }).join("\n") || "(inicio de la conversación)";
+  }
+
+  var GUIAS = {
+    diario: "Las respuestas sugeridas van en inglés sencillo de nivel A2, cortas y amables.",
+    tecnica: "Es una reunión técnica de trabajo. Las respuestas sugeridas van en inglés profesional claro, de nivel B1, precisas y con el vocabulario técnico correcto; pueden ser aportes breves o preguntas para aclarar.",
+    entrevista: "Es una entrevista de trabajo. Las respuestas sugeridas van en inglés profesional claro, de nivel B1, y responden como lo haría la usuaria según su perfil, con ejemplos concretos de su experiencia y sin inventar datos que el perfil no diga."
+  };
+  function marco() {
+    var t = "Eres el intérprete personal de una hispanohablante que trabaja y vive en inglés y está mejorando su nivel. ";
+    if (perfil()) t += "Su perfil: " + perfil() + ". ";
+    if (temaReunion()) t += "Tema de la conversación: " + temaReunion() + ". ";
+    return t + (GUIAS[tipo()] || GUIAS.diario) + " ";
   }
   function procesarCola() {
     if (ocupado || !cola.length) return;
@@ -302,13 +343,13 @@
     historia.push({ quien: "Interlocutor", texto: texto });
 
     encolar(function () {
-      var prompt =
-        "Eres el intérprete personal de Adriana, hispanohablante de nivel A2 en una reunión en Baréin. " +
-        "Te paso lo último que dijo su interlocutor en inglés, transcrito por voz (puede traer errores; interpreta lo más probable).\n\n" +
+      var prompt = marco() +
+        "Te paso lo último que dijo su interlocutor en inglés, transcrito por voz (puede traer errores; interpreta lo más probable). " +
+        "Traduce los términos técnicos con su equivalente técnico estándar en español.\n\n" +
         "Contexto previo:\n" + contexto() +
         "\n\nDijeron: «" + texto + "»\n\n" +
         "Responde SOLO con un objeto JSON exactamente así: " +
-        '{"es":"traducción natural al español","sug":[{"en":"respuesta breve en inglés sencillo nivel A2",' +
+        '{"es":"traducción natural al español","sug":[{"en":"respuesta sugerida en inglés, con el registro indicado",' +
         '"pr":"pronunciación aproximada en español, sílabas con guiones, la tónica con tilde y ↗ o ↘ al final",' +
         '"es":"qué significa"}]} ' +
         "con 2 o 3 sugerencias que respondan de verdad al contexto. Nada de texto fuera del JSON.";
@@ -345,9 +386,10 @@
     div.appendChild(en); div.appendChild(es);
     feed.appendChild(div); div.scrollIntoView({ block: "end" });
     encolar(function () {
-      var prompt = "Traduce al español natural este fragmento de una charla en inglés transcrita por voz " +
-        "(corrige errores evidentes de transcripción). Responde solo con la traducción, sin comentarios:\n«" +
-        texto + "»";
+      var prompt = (temaReunion() ? "Tema de la charla: " + temaReunion() + ". " : "") +
+        "Traduce al español natural este fragmento de una charla en inglés transcrita por voz " +
+        "(corrige errores evidentes de transcripción y usa el término técnico estándar en español cuando corresponda). " +
+        "Responde solo con la traducción, sin comentarios:\n«" + texto + "»";
       return llamarClaude(prompt).then(function (t) {
         es.textContent = t.trim();
         transcripcion.push(texto + "\n" + t.trim());
@@ -378,14 +420,14 @@
     div.appendChild(esP); div.appendChild(enP); div.appendChild(prP);
     feed.appendChild(div); div.scrollIntoView({ block: "end" });
     encolar(function () {
-      var prompt = "Adriana (nivel A2) quiere decir en inglés: «" + texto + "». " +
-        'Responde SOLO con un objeto JSON: {"en":"la frase en inglés sencillo y natural","pr":"pronunciación aproximada ' +
+      var prompt = marco() + "Quiere decir en inglés: «" + texto + "». " +
+        'Responde SOLO con un objeto JSON: {"en":"la frase en inglés natural, con el registro indicado","pr":"pronunciación aproximada ' +
         'en español, sílabas con guiones, tónica con tilde y ↗ o ↘ al final"}. Nada fuera del JSON.';
       return llamarClaude(prompt).then(function (t) {
         var r = extraerJSON(t) || {};
         enP.textContent = String(r.en || "(sin respuesta)");
         prP.textContent = String(r.pr || "");
-        historia.push({ quien: "Adriana", texto: String(r.en || texto) });
+        historia.push({ quien: "Usuaria", texto: String(r.en || texto) });
         div.scrollIntoView({ block: "end" });
       }).catch(function (e) { enP.textContent = "(" + copiaError(e) + ")"; });
     });
@@ -405,7 +447,7 @@
     if (!buffer.length) return;
     var texto = buffer.join(" ").replace(/\s+/g, " ").trim();
     buffer = [];
-    live.textContent = escuchando ? "Te escucho…" : "";
+    live.textContent = escuchando ? (pistaReunion ? "Escuchando la reunión…" : "Te escucho…") : "";
     if (!texto) return;
     if (modo === "conv") turnoConversacion(texto); else lineaExposicion(texto);
   }
@@ -414,6 +456,16 @@
   var ultimaInterina = "";
   var idioma = "en-GB";
   var silencios = 0;
+  var pistaReunion = null, flujoReunion = null;
+  var btnPantalla = $("btnPantalla");
+  var puedePantalla = !esAndroid && !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  if (!puedePantalla) btnPantalla.style.display = "none";
+
+  function cerrarFlujo() {
+    if (flujoReunion) flujoReunion.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+    flujoReunion = null;
+    pistaReunion = null;
+  }
 
   function programarEnvio() {
     if (temporizador) clearTimeout(temporizador);
@@ -421,13 +473,17 @@
   }
 
   function pintarMic() {
-    btnMic.classList.toggle("escuchando", escuchando);
-    micTexto.textContent = escuchando ? "Escuchando en inglés, toca para pausar" : "Toca para escuchar en inglés";
+    btnMic.classList.toggle("escuchando", escuchando && !pistaReunion);
+    btnPantalla.classList.toggle("activo", !!pistaReunion);
+    btnPantalla.textContent = pistaReunion ? "Dejar de escuchar la reunión" : "Escuchar la reunión del computador";
+    if (pistaReunion) micTexto.textContent = "Escuchando el audio de la reunión";
+    else micTexto.textContent = escuchando ? "Escuchando en inglés, toca para pausar" : "Toca para escuchar en inglés";
   }
 
   function detenerConError(estadoTxt, msj) {
     escuchando = false;
     if (rec) { try { rec.abort(); } catch (e) {} }
+    cerrarFlujo();
     pintarMic();
     live.textContent = "";
     setEstado(estadoTxt, "err");
@@ -441,11 +497,11 @@
     }
     rec = new SR();
     rec.lang = idioma;
-    rec.continuous = !esAndroid;
+    rec.continuous = pistaReunion ? true : !esAndroid;
     rec.interimResults = true;
     rec.onstart = function () {
-      setEstado("escuchando", "on");
-      if (!live.textContent) live.textContent = "Te escucho…";
+      setEstado(pistaReunion ? "escuchando la reunión" : "escuchando", "on");
+      if (!live.textContent) live.textContent = pistaReunion ? "Escuchando la reunión…" : "Te escucho…";
     };
     rec.onspeechstart = function () { setEstado("oyendo voz", "on"); };
     rec.onresult = function (ev) {
@@ -468,7 +524,9 @@
         silencios++;
         if (silencios >= 2) {
           setEstado("no me llega voz", "err");
-          avisar("El micrófono está abierto pero no me llega voz. Acerca el teléfono a quien habla. Si pruebas con un video, ponlo en otro aparato: el sonido que sale de este mismo teléfono no se capta.");
+          avisar(pistaReunion
+            ? "No me llega audio de la reunión. Revisa que al compartir marcaste la casilla del audio. Si en las tarjetas aparece lo que dices tú y no la reunión, actualiza Chrome a su última versión."
+            : "El micrófono está abierto pero no me llega voz. Acerca el teléfono a quien habla. Si pruebas con un video, ponlo en otro aparato: el sonido que sale de este mismo teléfono no se capta.");
         }
         return;
       }
@@ -496,17 +554,62 @@
         setTimeout(function () {
           if (!escuchando) return;
           if (rec.lang !== idioma) { arrancarMic(); return; }
-          try { rec.start(); } catch (e) {}
+          if (pistaReunion && pistaReunion.readyState !== "live") { detenerReunion(); return; }
+          try { if (pistaReunion) rec.start(pistaReunion); else rec.start(); } catch (e) {}
         }, 250);
       } else { live.textContent = ""; }
     };
-    try { rec.start(); }
-    catch (e) { detenerConError("error de voz", "No se pudo iniciar el micrófono. Recarga la página e intenta de nuevo."); }
+    try { if (pistaReunion) rec.start(pistaReunion); else rec.start(); }
+    catch (e) { detenerConError("error de voz", "No se pudo iniciar el reconocimiento de voz. Recarga la página e intenta de nuevo."); }
+  }
+
+  btnPantalla.addEventListener("click", function () {
+    if (!clave()) { abrirAjustes(); return; }
+    if (pistaReunion) { detenerReunion(); return; }
+    if (!SR) { detenerConError("sin reconocimiento", "Este navegador no tiene reconocimiento de voz. Usa Chrome en el computador."); return; }
+    navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: { suppressLocalAudioPlayback: false },
+      systemAudio: "include",
+      selfBrowserSurface: "exclude"
+    }).then(function (flujo) {
+      var pistas = flujo.getAudioTracks();
+      if (!pistas.length) {
+        flujo.getTracks().forEach(function (t) { t.stop(); });
+        setEstado("sin audio", "err");
+        avisar("No se compartió el audio. Vuelve a tocar el botón y activa el audio al elegir qué compartir: si eliges la pestaña de la reunión, marca «Compartir también el audio de la pestaña»; si eliges la pantalla completa (Zoom o Teams instalados), marca «Compartir también el audio del sistema».");
+        return;
+      }
+      if (escuchando) { escuchando = false; if (rec) { try { rec.abort(); } catch (e) {} } }
+      flujoReunion = flujo;
+      pistaReunion = pistas[0];
+      pistaReunion.addEventListener("ended", detenerReunion);
+      escuchando = true;
+      silencios = 0;
+      avisar("");
+      pintarMic();
+      arrancarMic();
+    }).catch(function (e) {
+      if (e && e.name === "NotAllowedError") return;
+      setEstado("sin audio", "err");
+      avisar("No se pudo capturar el audio del computador (" + ((e && e.name) || "error") + ").");
+    });
+  });
+
+  function detenerReunion() {
+    if (!pistaReunion && !flujoReunion) return;
+    escuchando = false;
+    if (rec) { try { rec.stop(); } catch (e) {} }
+    cerrarFlujo();
+    vaciarBuffer();
+    pintarMic();
+    refrescarEstado();
   }
 
   btnMic.addEventListener("click", function () {
     if (!clave()) { abrirAjustes(); return; }
     if (escuchando) {
+      if (pistaReunion) { detenerReunion(); return; }
       escuchando = false;
       if (rec) { try { rec.stop(); } catch (e) {} }
       vaciarBuffer();

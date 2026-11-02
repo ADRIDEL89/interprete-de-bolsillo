@@ -1,6 +1,6 @@
 # Intérprete de Bolsillo
 
-Página web personal para interpretar conversaciones en inglés en tiempo real: escucha con el micrófono del navegador, traduce al español y sugiere respuestas en inglés con pronunciación aproximada. Pensada para reuniones escolares y trámites del día a día de una familia hispanohablante en Baréin.
+Página web personal para seguir conversaciones en inglés en tiempo real: escucha, traduce al español y sugiere respuestas en inglés con pronunciación aproximada. Pensada para hispanohablantes que viven y trabajan en inglés.
 
 ## Modos
 
@@ -8,8 +8,15 @@ Página web personal para interpretar conversaciones en inglés en tiempo real: 
 - Exposición: traducción corrida tipo subtítulos, con botón para copiar la transcripción completa.
 - ¿Cómo digo…?: entrada en español que devuelve la frase en inglés con pronunciación.
 
-## Uso
+## Fuentes de audio
 
-Se sirve con GitHub Pages y se abre en Chrome (Android). En Ajustes se pega una clave API de Anthropic, que se guarda únicamente en el almacenamiento local del navegador y se envía solo a `api.anthropic.com`. Este repositorio no contiene ninguna clave ni dato personal.
+- Teléfono (Chrome en Android): micrófono, para conversaciones presenciales.
+- Computador (Chrome): botón «Escuchar la reunión del computador», que capta el audio de una pestaña (Meet, Zoom o Teams en el navegador) o de todo el sistema (Zoom o Teams instalados) sin usar el micrófono.
 
-El motor por defecto es Claude Haiku (rápido y de costo mínimo); puede cambiarse a Claude Opus desde Ajustes.
+## Ajustes
+
+- Tipo de conversación: colegio y día a día, reunión técnica o entrevista de trabajo; cambia el registro de las respuestas sugeridas.
+- Perfil profesional y tema de la reunión: opcionales, para que las sugerencias encajen con la conversación.
+- Motor: Claude Haiku (rápido, por defecto), Claude Sonnet o Claude Opus.
+
+La clave API de Anthropic, el perfil y el tema se guardan únicamente en el almacenamiento local del navegador. La clave se envía solo a `api.anthropic.com`. Este repositorio no contiene ninguna clave ni dato personal.
