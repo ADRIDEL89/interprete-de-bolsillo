@@ -657,7 +657,7 @@
     }
     rec = new SR();
     rec.lang = idioma;
-    rec.continuous = pistaReunion ? true : !esAndroid;
+    rec.continuous = true;
     rec.interimResults = true;
     rec.onstart = function () {
       setEstado(pistaReunion ? "escuchando la reunión" : "escuchando", "on");
@@ -667,6 +667,16 @@
     rec.onresult = function (ev) {
       silencios = 0;
       if (aviso.className) avisar("");
+      if (esAndroid && !pistaReunion) {
+        var n = ev.results.length, partes = [];
+        for (var k = 0; k < n; k++) partes.push(ev.results[k][0].transcript.trim());
+        var acumulado = n >= 2 && partes[n - 2] &&
+          partes[n - 1].toLowerCase().indexOf(partes[n - 2].toLowerCase()) === 0;
+        ultimaInterina = acumulado ? partes[n - 1] : partes.join(" ");
+        revisarInterina();
+        live.textContent = palabrasDe(ultimaInterina).slice(-25).join(" ");
+        return;
+      }
       var interina = "", finales = [];
       for (var i = ev.resultIndex; i < ev.results.length; i++) {
         var r = ev.results[i];
