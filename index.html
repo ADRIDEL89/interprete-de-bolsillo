@@ -70,6 +70,8 @@
   .turno .es { font-size: 1.12rem; margin: 0; font-weight: 600; }
   .turno .es.espera { color: var(--muted); font-weight: 400; font-style: italic; }
   .sugs { margin-top: 10px; display: grid; gap: 8px; }
+  .concepto { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; background: var(--accent-soft);
+              color: var(--ink); font-size: .95rem; }
   .sug {
     text-align: left; border: 1px solid var(--line); background: var(--sug-soft);
     border-radius: 10px; padding: 10px 12px; font-size: 1rem; color: var(--ink); width: 100%;
@@ -374,8 +376,8 @@
 
   var GUIAS = {
     diario: "Las respuestas sugeridas van en inglés sencillo de nivel A2, cortas y amables.",
-    tecnica: "Es una reunión técnica de trabajo. Las respuestas sugeridas van en inglés profesional claro, de nivel B1, precisas y con el vocabulario técnico correcto; pueden ser aportes breves o preguntas para aclarar.",
-    entrevista: "Es una entrevista de trabajo. Las respuestas sugeridas van en inglés profesional claro, de nivel B1, y responden como lo haría la usuaria según su perfil, con ejemplos concretos de su experiencia y sin inventar datos que el perfil no diga."
+    tecnica: "Es una reunión técnica de trabajo. Las respuestas sugeridas van en inglés sencillo de nivel B1: frases cortas, vocabulario común y como máximo dos oraciones, conservando los términos técnicos exactos; pueden ser aportes breves o preguntas para aclarar.",
+    entrevista: "Es una entrevista de trabajo. Las respuestas sugeridas van en inglés sencillo de nivel B1: frases cortas, vocabulario común y como máximo dos oraciones, y responden como lo haría la usuaria según su perfil, con un ejemplo concreto de su experiencia."
   };
   function marco() {
     var t = "Eres el intérprete personal de una hispanohablante que trabaja y vive en inglés y está mejorando su nivel. ";
@@ -450,13 +452,21 @@
         "Te paso lo último que dijo su interlocutor en inglés, transcrito por voz (puede traer errores; interpreta lo más probable).\n\n" +
         "Contexto previo:\n" + contexto() +
         "\n\nDijeron: «" + texto + "»\n\n" +
+        "Si le hicieron una pregunta, las sugerencias son respuestas directas que ella puede decir tal cual, apoyadas en su perfil real; " +
+        "no inventes cifras, fechas, cargos ni proyectos que el perfil no diga.\n\n" +
         "Responde SOLO con un objeto JSON exactamente así: " +
-        '{"sug":[{"en":"respuesta sugerida en inglés, con el registro indicado",' +
+        '{"concepto":"en español, una o dos frases que expliquen el concepto o término clave del que hablan o preguntan; vacío si es algo cotidiano",' +
+        '"sug":[{"en":"respuesta sugerida en inglés, con el registro indicado",' +
         '"pr":"pronunciación aproximada en español, sílabas con guiones, la tónica con tilde y ↗ o ↘ al final",' +
         '"es":"qué significa"}]} ' +
         "con 2 o 3 sugerencias que respondan de verdad al contexto. Nada de texto fuera del JSON.";
       return llamarClaude(prompt).then(function (texto2) {
         var r = extraerJSON(texto2) || {};
+        if (r.concepto && String(r.concepto).trim()) {
+          var con = document.createElement("p"); con.className = "concepto";
+          con.textContent = "Concepto: " + String(r.concepto).trim();
+          card.appendChild(con);
+        }
         var lista = Array.isArray(r.sug) ? r.sug.slice(0, 3) : [];
         if (lista.length) {
           var wrap = document.createElement("div"); wrap.className = "sugs";
