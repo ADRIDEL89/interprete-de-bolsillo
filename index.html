@@ -452,14 +452,14 @@
         "Te paso lo último que dijo su interlocutor en inglés, transcrito por voz (puede traer errores; interpreta lo más probable).\n\n" +
         "Contexto previo:\n" + contexto() +
         "\n\nDijeron: «" + texto + "»\n\n" +
-        "Si le hicieron una pregunta, las sugerencias son respuestas directas que ella puede decir tal cual, apoyadas en su perfil real; " +
+        "Si le hicieron una pregunta, la sugerencia es una respuesta directa que ella puede decir tal cual, apoyada en su perfil real; " +
         "no inventes cifras, fechas, cargos ni proyectos que el perfil no diga.\n\n" +
         "Responde SOLO con un objeto JSON exactamente así: " +
         '{"concepto":"en español, una o dos frases que expliquen el concepto o término clave del que hablan o preguntan; vacío si es algo cotidiano",' +
         '"sug":[{"en":"respuesta sugerida en inglés, con el registro indicado",' +
         '"pr":"pronunciación aproximada en español, sílabas con guiones, la tónica con tilde y ↗ o ↘ al final",' +
         '"es":"qué significa"}]} ' +
-        "con 2 o 3 sugerencias que respondan de verdad al contexto. Nada de texto fuera del JSON.";
+        "con UNA sola sugerencia en la lista: la mejor respuesta para este momento de la conversación. Nada de texto fuera del JSON.";
       return llamarClaude(prompt).then(function (texto2) {
         var r = extraerJSON(texto2) || {};
         if (r.concepto && String(r.concepto).trim()) {
@@ -467,12 +467,12 @@
           con.textContent = "Concepto: " + String(r.concepto).trim();
           card.appendChild(con);
         }
-        var lista = Array.isArray(r.sug) ? r.sug.slice(0, 3) : [];
+        var lista = Array.isArray(r.sug) ? r.sug.slice(0, 1) : [];
         if (lista.length) {
           var wrap = document.createElement("div"); wrap.className = "sugs";
           lista.forEach(function (sg) {
             var b = document.createElement("button");
-            b.type = "button"; b.className = "sug";
+            b.type = "button"; b.className = "sug grande";
             var en2 = document.createElement("b"); en2.textContent = String(sg.en || "");
             var pr = document.createElement("span"); pr.className = "pr"; pr.textContent = String(sg.pr || "");
             var tr = document.createElement("span"); tr.className = "tr"; tr.textContent = String(sg.es || "");
